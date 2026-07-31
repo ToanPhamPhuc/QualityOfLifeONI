@@ -1,24 +1,23 @@
 ﻿using System.Collections.Generic;
 using HarmonyLib;
-using UnityEngine;
 
 namespace MoreAutomations
 {
-#region Robo-pilot Module
-    // 1. Add Output Automation Port to the Robo-Pilot Module Building Def
+#region Robo-pilot Module fixed
+
+    // 1. Add Logic Output Port at Offset (1, 0) - Center Tile
     [HarmonyPatch(typeof(RoboPilotModuleConfig), nameof(RoboPilotModuleConfig.CreateBuildingDef))]
     public static class RoboPilotModuleConfig_CreateBuildingDef_Patch
     {
         public static void Postfix(ref BuildingDef __result)
         {
-            // Create single logic output port at Offset (-1, 0)
             __result.LogicOutputPorts = new List<LogicPorts.Port>
             {
                 LogicPorts.Port.OutputPort(
                     LogicSwitch.PORT_ID,
-                    new CellOffset(-1, 0),
+                    new CellOffset(-1, 0), // (1, 0) = Center, (2, 0) = Right edge
                     "Data Bank Full Signal",
-                    "Sends a Green signal when Data Banks are fully loaded, otherwise Red signal.",
+                    "Sends a Green signal when Data Banks are fully loaded (100 kg), otherwise Red signal.",
                     "Data Banks Not Full",
                     false
                 )
@@ -26,46 +25,48 @@ namespace MoreAutomations
         }
     }
 
-    // 2. Drive the Logic Signal based on Data Bank Storage
+    // 2. Control Automation Output Signal
     [HarmonyPatch(typeof(RoboPilotModule), "OnSpawn")]
     public static class RoboPilotModule_OnSpawn_Patch
     {
         public static void Postfix(RoboPilotModule __instance)
         {
-            // Subscribe storage change event to update output signal
-            __instance.Subscribe((int)GameHashes.OnStorageChange, (data) =>
-            {
-                UpdateAutomationSignal(__instance);
-            });
+            // Update signal whenever storage changes (Data Banks added/removed)
+            __instance.Subscribe((int)GameHashes.OnStorageChange, _ => UpdateAutomationSignal(__instance));
 
-            // Initial signal update on spawn
+            // Initial check on spawn
             UpdateAutomationSignal(__instance);
         }
 
-        private static void UpdateAutomationSignal(RoboPilotModule module)
+        public static void UpdateAutomationSignal(RoboPilotModule module)
         {
             LogicPorts component = module.GetComponent<LogicPorts>();
             if (component != null)
             {
-                // Checks if Data Banks stored equals or exceeds capacity (100kg / 100 units)
-                bool isFull = module.IsFull(); // Uses built-in IsFull() method
-
+                // Sends Green (1) when storage is at full capacity (100kg), Red (0) otherwise
+                bool isFull = module.IsFull();
                 component.SendSignal(LogicSwitch.PORT_ID, isFull ? 1 : 0);
             }
         }
     }
 
-    // 4. Fix refillMass
-    [HarmonyPatch(typeof(RoboPilotModuleConfig), nameof(RoboPilotModuleConfig.DoPostConfigureComplete))]
-    public static class RoboPilotModuleConfig_DoPostConfigureComplete_Patch
+    // 3. Override Data Bank Request Logic to ALWAYS target 100/100 kg
+    [HarmonyPatch(typeof(RoboPilotModule), "RequestDataBanksForDestination")]
+    public static class RoboPilotModule_RequestDataBanks_Patch
     {
-        public static void Postfix(GameObject go)
+        public static void Postfix(RoboPilotModule __instance)
         {
-            ManualDeliveryKG manualDelivery = go.GetComponent<ManualDeliveryKG>();
-            if (manualDelivery != null)
+            ManualDeliveryKG delivery = __instance.GetComponent<ManualDeliveryKG>();
+            Storage storage = __instance.GetComponent<Storage>();
+
+            if (delivery != null && storage != null)
             {
-                // Forces the module to request errands even if only 1 kg is missing!
-                manualDelivery.refillMass = manualDelivery.capacity;
+                float missingMass = storage.Capacity() - storage.UnitsStored();
+
+                if (missingMass > 0f)
+                {
+                    delivery.refillMass = storage.Capacity();
+                }
             }
         }
     }
