@@ -17,19 +17,14 @@ namespace QualityOfLifeONI
 
         private Guid statusItemGuid = Guid.Empty;
 
-        public Tag filterCategory; // Assign category per building type
-
         protected override void OnSpawn()
         {
             base.OnSpawn();
 
-            // Safe to call UpdateFilters here because the building is spawned
-            if (filterCategory.IsValid)
-            {
-                treeFilterable.UpdateFilters(new HashSet<Tag> { filterCategory }); //[cite: 1]
-            }
+            // Subscribe to TreeFilterable filter change events
+            treeFilterable.OnFilterChanged += OnFilterChanged; 
 
-            treeFilterable.OnFilterChanged += OnFilterChanged; //[cite: 1]
+            // Safely update status item on spawn
             UpdateStatusItem();
         }
 
@@ -37,7 +32,7 @@ namespace QualityOfLifeONI
         {
             if (treeFilterable != null)
             {
-                treeFilterable.OnFilterChanged -= OnFilterChanged; //[cite: 1]
+                treeFilterable.OnFilterChanged -= OnFilterChanged; 
             }
             base.OnCleanUp();
         }
@@ -49,7 +44,11 @@ namespace QualityOfLifeONI
 
         public void UpdateStatusItem()
         {
-            HashSet<Tag> tags = treeFilterable.GetTags(); //[cite: 1]
+            if (treeFilterable == null || selectable == null)
+                return;
+
+            // Access AcceptedTags safely from TreeFilterable
+            var tags = treeFilterable.AcceptedTags; 
             if (tags == null || tags.Count == 0)
             {
                 if (statusItemGuid != Guid.Empty)
@@ -59,20 +58,53 @@ namespace QualityOfLifeONI
                 return;
             }
 
-            // Get standard tag status string directly from TreeFilterable
-            string statusText = treeFilterable.GetTagsAsStatus(6); //[cite: 1]
+            // Build display status string safely without calling GetTagsAsStatus before storage init
+            List<string> tagNames = new List<string>();
+            foreach (Tag tag in tags)
+            {
+                if (tag.IsValid)
+                {
+                    tagNames.Add(tag.ProperName());
+                }
+            }
 
-            // Clear old status before setting a new one
+            if (tagNames.Count == 0)
+                return;
+
+            string statusText = "Filters: " + string.Join(", ", tagNames);
+
+            // Remove previous status item before setting new one
             if (statusItemGuid != Guid.Empty)
             {
                 selectable.RemoveStatusItem(statusItemGuid);
             }
 
-            // Use AddStatusItem to register status items
             statusItemGuid = selectable.AddStatusItem(
-                Db.Get().BuildingStatusItems.NoStorageFilterSet, //[cite: 2]
+                Db.Get().BuildingStatusItems.NoStorageFilterSet,
                 statusText
             );
+        }
+    }
+
+    // Helper method to setup Storage + TreeFilterable without crashing
+    public static class FilterSetupHelper
+    {
+        public static void ConfigureTreeFilter(GameObject go, Tag categoryTag)
+        {
+            // Ensure a Storage component exists and set its filter category
+            Storage storage = go.AddOrGet<Storage>();
+            if (storage.storageFilters == null)
+            {
+                storage.storageFilters = new List<Tag>();
+            }
+            if (!storage.storageFilters.Contains(categoryTag))
+            {
+                storage.storageFilters.Add(categoryTag);
+            }
+
+            // Add TreeFilterable and MultipleChoicesFilters
+            go.AddOrGet<TreeFilterable>(); 
+            go.AddOrGet<MultipleChoicesFilters>();
         }
     }
 
@@ -83,11 +115,9 @@ namespace QualityOfLifeONI
         public static void Postfix(GameObject go)
         {
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
-            UnityEngine.Object.DestroyImmediate(go.GetComponent<ElementFilter>()); // <-- Fixes the crash!
+            UnityEngine.Object.DestroyImmediate(go.GetComponent<ElementFilter>());
 
-            go.AddOrGet<TreeFilterable>();
-            var multiFilter = go.AddOrGet<MultipleChoicesFilters>();
-            multiFilter.filterCategory = GameTags.Gas;
+            FilterSetupHelper.ConfigureTreeFilter(go, GameTags.Gas);
         }
     }
 
@@ -98,11 +128,9 @@ namespace QualityOfLifeONI
         public static void Postfix(GameObject go)
         {
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
-            UnityEngine.Object.DestroyImmediate(go.GetComponent<ElementFilter>()); // <-- Fixes the crash!
+            UnityEngine.Object.DestroyImmediate(go.GetComponent<ElementFilter>());
 
-            go.AddOrGet<TreeFilterable>();
-            var multiFilter = go.AddOrGet<MultipleChoicesFilters>();
-            multiFilter.filterCategory = GameTags.Liquid;
+            FilterSetupHelper.ConfigureTreeFilter(go, GameTags.Liquid);
         }
     }
 
@@ -113,13 +141,9 @@ namespace QualityOfLifeONI
         public static void Postfix(GameObject go)
         {
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
-
-            // Solid filters use ElementFilter just like Gas and Liquid filters
             UnityEngine.Object.DestroyImmediate(go.GetComponent<ElementFilter>());
 
-            go.AddOrGet<TreeFilterable>();
-            var multiFilter = go.AddOrGet<MultipleChoicesFilters>();
-            multiFilter.filterCategory = GameTags.Solid;
+            FilterSetupHelper.ConfigureTreeFilter(go, GameTags.Solid);
         }
     }
 }
