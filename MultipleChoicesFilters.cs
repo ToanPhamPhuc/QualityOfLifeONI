@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+﻿/*using HarmonyLib;
 using KSerialization;
 using System;
 using System.Collections.Generic;
@@ -7,143 +7,123 @@ using UnityEngine;
 namespace QualityOfLifeONI
 {
     [SerializationConfig(MemberSerialization.OptIn)]
-    public class MultipleChoicesFilters : KMonoBehaviour, ISaveLoadable
+    public class MultiElementFilter : KMonoBehaviour
     {
+        [MyCmpReq]
+        private Building building;
+
         [MyCmpReq]
         private TreeFilterable treeFilterable;
 
         [MyCmpReq]
-        private KSelectable selectable;
+        private Operational operational;
 
-        private Guid statusItemGuid = Guid.Empty;
+        private int inputCell;
+        private int outputCell;
+        private int filteredCell;
 
         protected override void OnSpawn()
         {
             base.OnSpawn();
 
-            // Subscribe to TreeFilterable filter change events
-            treeFilterable.OnFilterChanged += OnFilterChanged; 
+            // Cache primary ports
+            inputCell = building.GetUtilityInputCell();
+            outputCell = building.GetUtilityOutputCell();
 
-            // Safely update status item on spawn
-            UpdateStatusItem();
+            // Cache secondary orange filter port cell
+            ISecondaryOutput secondaryOutput = GetComponent<ISecondaryOutput>();
+            if (secondaryOutput != null)
+            {
+                CellOffset offset = secondaryOutput.GetSecondaryConduitOffset(building.Def.InputConduitType);
+                filteredCell = Grid.OffsetCell(Grid.PosToCell(transform.GetPosition()), offset);
+            }
+            else
+            {
+                filteredCell = outputCell;
+            }
+
+            // Register tick updater with the conduit network
+            ConduitFlow flow = GetConduitFlow();
+            if (flow != null)
+            {
+                flow.AddConduitUpdater(OnConduitTick, ConduitFlowPriority.Default);
+            }
         }
 
         protected override void OnCleanUp()
         {
-            if (treeFilterable != null)
+            ConduitFlow flow = GetConduitFlow();
+            if (flow != null)
             {
-                treeFilterable.OnFilterChanged -= OnFilterChanged; 
+                flow.RemoveConduitUpdater(OnConduitTick);
             }
             base.OnCleanUp();
         }
 
-        private void OnFilterChanged(HashSet<Tag> tags)
+        private ConduitFlow GetConduitFlow()
         {
-            UpdateStatusItem();
+            switch (building.Def.InputConduitType)
+            {
+                case ConduitType.Gas:
+                    return Game.Instance.gasConduitFlow;
+                case ConduitType.Liquid:
+                    return Game.Instance.liquidConduitFlow;
+                default:
+                    return null;
+            }
         }
 
-        public void UpdateStatusItem()
+        private void OnConduitTick(float dt)
         {
-            if (treeFilterable == null || selectable == null)
+            if (!operational.IsOperational)
                 return;
 
-            // Access AcceptedTags safely from TreeFilterable
-            var tags = treeFilterable.AcceptedTags; 
-            if (tags == null || tags.Count == 0)
+            ConduitFlow flow = GetConduitFlow();
+            if (flow == null)
+                return;
+
+            ConduitFlow.ConduitContents contents = flow.GetContents(inputCell);
+            if (contents.mass <= 0f)
+                return;
+
+            // Check if element matches any allowed tags in TreeFilterable
+            Element element = ElementLoader.FindElementByHash(contents.element);
+            bool isMatch = false;
+
+            if (element != null && treeFilterable.AcceptedTags != null)
             {
-                if (statusItemGuid != Guid.Empty)
+                Tag elementTag = element.tag;
+                foreach (Tag tag in treeFilterable.AcceptedTags)
                 {
-                    statusItemGuid = selectable.RemoveStatusItem(statusItemGuid);
+                    if (tag == elementTag || element.HasTag(tag))
+                    {
+                        isMatch = true;
+                        break;
+                    }
                 }
-                return;
             }
 
-            // Build display status string safely without calling GetTagsAsStatus before storage init
-            List<string> tagNames = new List<string>();
-            foreach (Tag tag in tags)
+            // Target the filtered cell if matched, otherwise standard output cell
+            int targetCell = isMatch ? filteredCell : outputCell;
+            ConduitFlow.ConduitContents targetContents = flow.GetContents(targetCell);
+
+            // Move contents if destination conduit is clear/has room
+            if (targetContents.mass <= 0f)
             {
-                if (tag.IsValid)
+                float movedAmount = flow.AddElement(
+                    targetCell,
+                    contents.element,
+                    contents.mass,
+                    contents.temperature,
+                    contents.diseaseIdx,
+                    contents.diseaseCount
+                );
+
+                if (movedAmount > 0f)
                 {
-                    tagNames.Add(tag.ProperName());
+                    flow.RemoveElement(inputCell, movedAmount);
                 }
             }
-
-            if (tagNames.Count == 0)
-                return;
-
-            string statusText = "Filters: " + string.Join(", ", tagNames);
-
-            // Remove previous status item before setting new one
-            if (statusItemGuid != Guid.Empty)
-            {
-                selectable.RemoveStatusItem(statusItemGuid);
-            }
-
-            statusItemGuid = selectable.AddStatusItem(
-                Db.Get().BuildingStatusItems.NoStorageFilterSet,
-                statusText
-            );
         }
     }
-
-    // Helper method to setup Storage + TreeFilterable without crashing
-    public static class FilterSetupHelper
-    {
-        public static void ConfigureTreeFilter(GameObject go, Tag categoryTag)
-        {
-            // Ensure a Storage component exists and set its filter category
-            Storage storage = go.AddOrGet<Storage>();
-            if (storage.storageFilters == null)
-            {
-                storage.storageFilters = new List<Tag>();
-            }
-            if (!storage.storageFilters.Contains(categoryTag))
-            {
-                storage.storageFilters.Add(categoryTag);
-            }
-
-            // Add TreeFilterable and MultipleChoicesFilters
-            go.AddOrGet<TreeFilterable>(); 
-            go.AddOrGet<MultipleChoicesFilters>();
-        }
-    }
-
-    // 1. Gas Filter
-    [HarmonyPatch(typeof(GasFilterConfig), nameof(GasFilterConfig.ConfigureBuildingTemplate))]
-    public static class GasFilter_MultiChoice_Patch
-    {
-        public static void Postfix(GameObject go)
-        {
-            UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
-            UnityEngine.Object.DestroyImmediate(go.GetComponent<ElementFilter>());
-
-            FilterSetupHelper.ConfigureTreeFilter(go, GameTags.Gas);
-        }
-    }
-
-    // 2. Liquid Filter
-    [HarmonyPatch(typeof(LiquidFilterConfig), nameof(LiquidFilterConfig.ConfigureBuildingTemplate))]
-    public static class LiquidFilter_MultiChoice_Patch
-    {
-        public static void Postfix(GameObject go)
-        {
-            UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
-            UnityEngine.Object.DestroyImmediate(go.GetComponent<ElementFilter>());
-
-            FilterSetupHelper.ConfigureTreeFilter(go, GameTags.Liquid);
-        }
-    }
-
-    // 3. Solid Filter
-    [HarmonyPatch(typeof(SolidFilterConfig), nameof(SolidFilterConfig.ConfigureBuildingTemplate))]
-    public static class SolidFilter_MultiChoice_Patch
-    {
-        public static void Postfix(GameObject go)
-        {
-            UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
-            UnityEngine.Object.DestroyImmediate(go.GetComponent<ElementFilter>());
-
-            FilterSetupHelper.ConfigureTreeFilter(go, GameTags.Solid);
-        }
-    }
-}
+}*/
