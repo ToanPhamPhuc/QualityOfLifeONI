@@ -83,6 +83,7 @@ namespace QualityOfLifeONI
         public static void Postfix(GameObject go)
         {
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
+            UnityEngine.Object.DestroyImmediate(go.GetComponent<ElementFilter>()); // <-- Fixes the crash!
 
             go.AddOrGet<TreeFilterable>();
             var multiFilter = go.AddOrGet<MultipleChoicesFilters>();
@@ -97,6 +98,7 @@ namespace QualityOfLifeONI
         public static void Postfix(GameObject go)
         {
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
+            UnityEngine.Object.DestroyImmediate(go.GetComponent<ElementFilter>()); // <-- Fixes the crash!
 
             go.AddOrGet<TreeFilterable>();
             var multiFilter = go.AddOrGet<MultipleChoicesFilters>();
@@ -111,6 +113,9 @@ namespace QualityOfLifeONI
         public static void Postfix(GameObject go)
         {
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
+
+            // Solid filters use ElementFilter just like Gas and Liquid filters
+            UnityEngine.Object.DestroyImmediate(go.GetComponent<ElementFilter>());
 
             go.AddOrGet<TreeFilterable>();
             var multiFilter = go.AddOrGet<MultipleChoicesFilters>();
