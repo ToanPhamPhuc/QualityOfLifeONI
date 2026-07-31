@@ -1,5 +1,6 @@
-﻿using HarmonyLib;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
+using HarmonyLib;
+using UnityEngine;
 
 namespace MoreAutomations
 {
@@ -10,12 +11,12 @@ namespace MoreAutomations
     {
         public static void Postfix(ref BuildingDef __result)
         {
-            // Create single logic output port at Offset (1, 0)
+            // Create single logic output port at Offset (-1, 0)
             __result.LogicOutputPorts = new List<LogicPorts.Port>
             {
                 LogicPorts.Port.OutputPort(
                     LogicSwitch.PORT_ID,
-                    new CellOffset(1, 0),
+                    new CellOffset(-1, 0),
                     "Data Bank Full Signal",
                     "Sends a Green signal when Data Banks are fully loaded, otherwise Red signal.",
                     "Data Banks Not Full",
@@ -50,6 +51,21 @@ namespace MoreAutomations
                 bool isFull = module.IsFull(); // Uses built-in IsFull() method
 
                 component.SendSignal(LogicSwitch.PORT_ID, isFull ? 1 : 0);
+            }
+        }
+    }
+
+    // 4. Fix refillMass
+    [HarmonyPatch(typeof(RoboPilotModuleConfig), nameof(RoboPilotModuleConfig.DoPostConfigureComplete))]
+    public static class RoboPilotModuleConfig_DoPostConfigureComplete_Patch
+    {
+        public static void Postfix(GameObject go)
+        {
+            ManualDeliveryKG manualDelivery = go.GetComponent<ManualDeliveryKG>();
+            if (manualDelivery != null)
+            {
+                // Forces the module to request errands even if only 1 kg is missing!
+                manualDelivery.refillMass = manualDelivery.capacity;
             }
         }
     }
