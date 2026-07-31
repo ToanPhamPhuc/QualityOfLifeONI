@@ -15,18 +15,30 @@ namespace QualityOfLifeONI
         [MyCmpReq]
         private KSelectable selectable;
 
-        private Guid statusItemGuid;
+        private Guid statusItemGuid = Guid.Empty;
+
+        public Tag filterCategory; // Assign category per building type
 
         protected override void OnSpawn()
         {
             base.OnSpawn();
-            treeFilterable.OnFilterChanged += OnFilterChanged; 
+
+            // Safe to call UpdateFilters here because the building is spawned
+            if (filterCategory.IsValid)
+            {
+                treeFilterable.UpdateFilters(new HashSet<Tag> { filterCategory }); //[cite: 1]
+            }
+
+            treeFilterable.OnFilterChanged += OnFilterChanged; //[cite: 1]
             UpdateStatusItem();
         }
 
         protected override void OnCleanUp()
         {
-            treeFilterable.OnFilterChanged -= OnFilterChanged;
+            if (treeFilterable != null)
+            {
+                treeFilterable.OnFilterChanged -= OnFilterChanged; //[cite: 1]
+            }
             base.OnCleanUp();
         }
 
@@ -37,27 +49,28 @@ namespace QualityOfLifeONI
 
         public void UpdateStatusItem()
         {
-            HashSet<Tag> tags = treeFilterable.GetTags();
+            HashSet<Tag> tags = treeFilterable.GetTags(); //[cite: 1]
             if (tags == null || tags.Count == 0)
             {
-                // Remove the existing status item using the stored Guid
-                statusItemGuid = selectable.RemoveStatusItem(statusItemGuid);
+                if (statusItemGuid != Guid.Empty)
+                {
+                    statusItemGuid = selectable.RemoveStatusItem(statusItemGuid);
+                }
                 return;
             }
 
             // Get standard tag status string directly from TreeFilterable
-            string statusText = treeFilterable.GetTagsAsStatus(6);
+            string statusText = treeFilterable.GetTagsAsStatus(6); //[cite: 1]
 
-            // If it's already added, remove the old one before re-adding,
-            // or use AddStatusItem to register/update it.
+            // Clear old status before setting a new one
             if (statusItemGuid != Guid.Empty)
             {
                 selectable.RemoveStatusItem(statusItemGuid);
             }
 
-            // Use AddStatusItem instead of SetStatusItem
+            // Use AddStatusItem to register status items
             statusItemGuid = selectable.AddStatusItem(
-                Db.Get().BuildingStatusItems.NoStorageFilterSet,
+                Db.Get().BuildingStatusItems.NoStorageFilterSet, //[cite: 2]
                 statusText
             );
         }
@@ -71,10 +84,9 @@ namespace QualityOfLifeONI
         {
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
 
-            var treeFilter = go.AddOrGet<TreeFilterable>();
-            treeFilter.UpdateFilters(new HashSet<Tag> { GameTags.Gas });
-
-            go.AddOrGet<MultipleChoicesFilters>();
+            go.AddOrGet<TreeFilterable>();
+            var multiFilter = go.AddOrGet<MultipleChoicesFilters>();
+            multiFilter.filterCategory = GameTags.Gas;
         }
     }
 
@@ -86,10 +98,9 @@ namespace QualityOfLifeONI
         {
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
 
-            var treeFilter = go.AddOrGet<TreeFilterable>();
-            treeFilter.UpdateFilters(new HashSet<Tag> { GameTags.Liquid });
-
-            go.AddOrGet<MultipleChoicesFilters>();
+            go.AddOrGet<TreeFilterable>();
+            var multiFilter = go.AddOrGet<MultipleChoicesFilters>();
+            multiFilter.filterCategory = GameTags.Liquid;
         }
     }
 
@@ -101,10 +112,9 @@ namespace QualityOfLifeONI
         {
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
 
-            var treeFilter = go.AddOrGet<TreeFilterable>();
-            treeFilter.UpdateFilters(new HashSet<Tag> { GameTags.Solid });
-
-            go.AddOrGet<MultipleChoicesFilters>();
+            go.AddOrGet<TreeFilterable>();
+            var multiFilter = go.AddOrGet<MultipleChoicesFilters>();
+            multiFilter.filterCategory = GameTags.Solid;
         }
     }
 }
