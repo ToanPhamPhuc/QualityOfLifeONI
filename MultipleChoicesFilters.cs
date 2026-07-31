@@ -2,7 +2,6 @@
 using KSerialization;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 namespace QualityOfLifeONI
@@ -21,7 +20,7 @@ namespace QualityOfLifeONI
         protected override void OnSpawn()
         {
             base.OnSpawn();
-            treeFilterable.OnFilterChanged += OnFilterChanged;
+            treeFilterable.OnFilterChanged += OnFilterChanged; 
             UpdateStatusItem();
         }
 
@@ -41,17 +40,24 @@ namespace QualityOfLifeONI
             HashSet<Tag> tags = treeFilterable.GetTags();
             if (tags == null || tags.Count == 0)
             {
-                selectable.RemoveStatusItem(statusItemGuid);
+                // Remove the existing status item using the stored Guid
+                statusItemGuid = selectable.RemoveStatusItem(statusItemGuid);
                 return;
             }
 
-            // Convert selected tags to localized element/item names
-            List<string> names = tags.Select(t => t.ProperName()).ToList();
-            string statusText = "Filters: " + string.Join(", ", names);
+            // Get standard tag status string directly from TreeFilterable
+            string statusText = treeFilterable.GetTagsAsStatus(6);
 
-            // FIX: Changed 'ElementFilter' to 'Filter' (or 'ElementFilterOutput')
-            statusItemGuid = selectable.SetStatusItem(
-                Db.Get().BuildingStatusItems.Filter,
+            // If it's already added, remove the old one before re-adding,
+            // or use AddStatusItem to register/update it.
+            if (statusItemGuid != Guid.Empty)
+            {
+                selectable.RemoveStatusItem(statusItemGuid);
+            }
+
+            // Use AddStatusItem instead of SetStatusItem
+            statusItemGuid = selectable.AddStatusItem(
+                Db.Get().BuildingStatusItems.NoStorageFilterSet,
                 statusText
             );
         }
@@ -66,8 +72,7 @@ namespace QualityOfLifeONI
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
 
             var treeFilter = go.AddOrGet<TreeFilterable>();
-            // FIX: Changed 'filterByTag' to 'uiTag'
-            treeFilter.uiTag = GameTags.Gas;
+            treeFilter.UpdateFilters(new HashSet<Tag> { GameTags.Gas });
 
             go.AddOrGet<MultipleChoicesFilters>();
         }
@@ -82,8 +87,7 @@ namespace QualityOfLifeONI
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
 
             var treeFilter = go.AddOrGet<TreeFilterable>();
-            // FIX: Changed 'filterByTag' to 'uiTag'
-            treeFilter.uiTag = GameTags.Liquid;
+            treeFilter.UpdateFilters(new HashSet<Tag> { GameTags.Liquid });
 
             go.AddOrGet<MultipleChoicesFilters>();
         }
@@ -98,8 +102,7 @@ namespace QualityOfLifeONI
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Filterable>());
 
             var treeFilter = go.AddOrGet<TreeFilterable>();
-            // FIX: Changed 'filterByTag' to 'uiTag'
-            treeFilter.uiTag = GameTags.Solid;
+            treeFilter.UpdateFilters(new HashSet<Tag> { GameTags.Solid });
 
             go.AddOrGet<MultipleChoicesFilters>();
         }
