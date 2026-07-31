@@ -1,30 +1,25 @@
 ﻿using HarmonyLib;
+using UnityEngine;
+using System.Collections.Generic;
 
 namespace QualityOfLifeONI
 {
-    [HarmonyPatch(typeof(Sublimates), nameof(Sublimates.Sim200ms))]
-    public static class LiquidBottler_StopOffGas_Patch
+    // Replace 'BottleEmptierConduitConfig' with the exact class name you find in dnSpy!
+    [HarmonyPatch(typeof(BottleEmptierConduitLiquidConfig), nameof(BottleEmptierConduitLiquidConfig.ConfigureBuildingTemplate))]
+    public static class BottleDrainerFixed
     {
-        public static bool Prefix(Sublimates __instance)
+        public static void Postfix(GameObject go)
         {
-            Pickupable pickupable = __instance.GetComponent<Pickupable>();
-
-            if (pickupable != null && pickupable.storage != null)
+            Storage storage = go.GetComponent<Storage>();
+            if (storage != null)
             {
-                // Check the KPrefabID tag on the building's GameObject
-                KPrefabID buildingPrefabID = pickupable.storage.GetComponent<KPrefabID>();
-
-                if (buildingPrefabID != null)
+                storage.SetDefaultStoredItemModifiers(new List<Storage.StoredItemModifier>
                 {
-                    // Check if the storage belongs to the Liquid Bottler
-                    if (buildingPrefabID.IsPrefabID("LiquidBottler"))
-                    {
-                        return false; // Blocks off-gassing!
-                    }
-                }
+                    Storage.StoredItemModifier.Hide,
+                    Storage.StoredItemModifier.Seal,
+                    Storage.StoredItemModifier.Insulate
+                });
             }
-
-            return true; // Allow normal off-gassing everywhere else
         }
     }
 }
