@@ -1,52 +1,65 @@
-﻿using HarmonyLib;
+﻿/*using HarmonyLib;
+using System.Collections.Generic;
+using UnityEngine;
 
 namespace BetterSpaceHarvesting
 {
-    // AutoEmptyRocketModulesMod removed from here to prevent duplicate UserMod2 error!
+    //public class AutoEmptyRocketModulesMod : KMod.UserMod2
+    //{
+    //    public override void OnLoad(Harmony harmony)
+    //    {
+    //        base.OnLoad(harmony);
+    //    }
+    //}
 
-    // Patch LaunchPad when a rocket lands on it
-    [HarmonyPatch(typeof(LaunchPad), "OnRocketLanded")]
-    public static class LaunchPad_OnRocketLanded_Patch
+    [HarmonyPatch(typeof(LaunchPad), "OnSpawn")]
+    public static class LaunchPad_OnSpawn_Patch
     {
-        public static void Postfix(LaunchPad __instance, LaunchableRocketCluster landedRocket)
+        public static void Postfix(LaunchPad __instance)
         {
-            if (landedRocket == null)
+            // Subscribe to the RocketLanded event trigger on the LaunchPad
+            __instance.Subscribe((int)GameHashes.RocketLanded, (data) =>
+            {
+                if (data is RocketModuleCluster landedRocket)
+                {
+                    EmptyRocketModules(landedRocket);
+                }
+            });
+        }
+
+        private static void EmptyRocketModules(RocketModuleCluster landedRocket)
+        {
+            if (landedRocket == null || landedRocket.CraftInterface == null)
                 return;
 
-            Clustercraft craft = landedRocket.GetComponent<Clustercraft>();
-            if (craft == null || craft.ModuleInterface == null)
-                return;
-
-            var modules = new System.Collections.Generic.List<Ref<RocketModuleCluster>>(craft.ModuleInterface.ClusterModules);
-
-            foreach (Ref<RocketModuleCluster> moduleRef in modules)
+            // Iterate through modules in the rocket cluster
+            foreach (Ref<RocketModuleCluster> moduleRef in landedRocket.CraftInterface.ClusterModules)
             {
                 RocketModuleCluster module = moduleRef.Get();
-                if (module == null)
-                    continue;
+                if (module == null) continue;
 
-                // 1. Auto Empty Cargo Bays (CargoBayCluster)
+                // 1. Empty Cargo Bays
                 CargoBayCluster cargoBay = module.GetComponent<CargoBayCluster>();
                 if (cargoBay != null)
                 {
                     Storage storage = cargoBay.GetComponent<Storage>();
-                    if (storage != null && !storage.IsEmpty())
+                    if (storage != null && storage.Count > 0)
                     {
-                        storage.DropAll();
+                        storage.DropAll(false, false, default, true);
                     }
                 }
 
-                // 2. Auto Empty Artifact Transport Modules
+                // 2. Empty Artifact Transport Modules
                 ArtifactSelector artifactModule = module.GetComponent<ArtifactSelector>();
                 if (artifactModule != null)
                 {
                     Storage storage = artifactModule.GetComponent<Storage>();
-                    if (storage != null && !storage.IsEmpty())
+                    if (storage != null && storage.Count > 0)
                     {
-                        storage.DropAll();
+                        storage.DropAll(false, false, default, true);
                     }
                 }
             }
         }
     }
-}
+}*/

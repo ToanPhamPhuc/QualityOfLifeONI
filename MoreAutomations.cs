@@ -3,9 +3,9 @@ using HarmonyLib;
 
 namespace MoreAutomations
 {
-#region Robo-pilot Module fixed
+    #region Robo-pilot Module fixed
 
-    // 1. Add Logic Output Port at Offset (1, 0) - Center Tile
+    // 1. Add Logic Output Port at Offset (0, 0) or (1, 0)
     [HarmonyPatch(typeof(RoboPilotModuleConfig), nameof(RoboPilotModuleConfig.CreateBuildingDef))]
     public static class RoboPilotModuleConfig_CreateBuildingDef_Patch
     {
@@ -15,7 +15,7 @@ namespace MoreAutomations
             {
                 LogicPorts.Port.OutputPort(
                     LogicSwitch.PORT_ID,
-                    new CellOffset(-1, 0), // (1, 0) = Center, (2, 0) = Right edge
+                    new CellOffset(-1, 0), 
                     "Data Bank Full Signal",
                     "Sends a Green signal when Data Banks are fully loaded (100 kg), otherwise Red signal.",
                     "Data Banks Not Full",
@@ -31,18 +31,13 @@ namespace MoreAutomations
     {
         public static void Postfix(RoboPilotModule __instance)
         {
+            if (__instance == null) return;
+
             // Update signal whenever storage changes
             __instance.Subscribe((int)GameHashes.OnStorageChange, _ => UpdateAutomationSignal(__instance));
 
-            // FIX: Delay the initial automation signal update by 1 frame upon loading a save
-            // to ensure the LogicPorts network has finished connecting.
-            __instance.StartCoroutine(DeferredInitialSignalCheck(__instance));
-        }
-
-        private static System.Collections.IEnumerator DeferredInitialSignalCheck(RoboPilotModule module)
-        {
-            yield return null; // Wait for next frame
-            UpdateAutomationSignal(module);
+            // FIX: Use GameScheduler to delay signal update by 0.2 seconds after spawn/load
+            GameScheduler.Instance.Schedule("DeferredRoboPilotSignal", 0.2f, _ => UpdateAutomationSignal(__instance));
         }
 
         public static void UpdateAutomationSignal(RoboPilotModule module)
