@@ -15,7 +15,7 @@ namespace MoreAutomations
             {
                 LogicPorts.Port.OutputPort(
                     LogicSwitch.PORT_ID,
-                    new CellOffset(-1, 0), 
+                    new CellOffset(0, 1), // Fix: Avoid negative offsets on rocket modules (x=-1 => crashable)
                     "Data Bank Full Signal",
                     "Sends a Green signal when Data Banks are fully loaded (100 kg), otherwise Red signal.",
                     "Data Banks Not Full",
