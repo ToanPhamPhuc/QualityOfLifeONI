@@ -31,19 +31,27 @@ namespace MoreAutomations
     {
         public static void Postfix(RoboPilotModule __instance)
         {
-            // Update signal whenever storage changes (Data Banks added/removed)
+            // Update signal whenever storage changes
             __instance.Subscribe((int)GameHashes.OnStorageChange, _ => UpdateAutomationSignal(__instance));
 
-            // Initial check on spawn
-            UpdateAutomationSignal(__instance);
+            // FIX: Delay the initial automation signal update by 1 frame upon loading a save
+            // to ensure the LogicPorts network has finished connecting.
+            __instance.StartCoroutine(DeferredInitialSignalCheck(__instance));
+        }
+
+        private static System.Collections.IEnumerator DeferredInitialSignalCheck(RoboPilotModule module)
+        {
+            yield return null; // Wait for next frame
+            UpdateAutomationSignal(module);
         }
 
         public static void UpdateAutomationSignal(RoboPilotModule module)
         {
+            if (module == null) return;
+
             LogicPorts component = module.GetComponent<LogicPorts>();
             if (component != null)
             {
-                // Sends Green (1) when storage is at full capacity (100kg), Red (0) otherwise
                 bool isFull = module.IsFull();
                 component.SendSignal(LogicSwitch.PORT_ID, isFull ? 1 : 0);
             }
