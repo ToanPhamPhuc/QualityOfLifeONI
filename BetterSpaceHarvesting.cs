@@ -2,29 +2,24 @@
 
 namespace BetterSpaceHarvesting
 {
-    public class AutoEmptyRocketModulesMod : KMod.UserMod2
-    {
-        public override void OnLoad(Harmony harmony)
-        {
-            base.OnLoad(harmony);
-        }
-    }
+    // AutoEmptyRocketModulesMod removed from here to prevent duplicate UserMod2 error!
 
     // Patch LaunchPad when a rocket lands on it
     [HarmonyPatch(typeof(LaunchPad), "OnRocketLanded")]
     public static class LaunchPad_OnRocketLanded_Patch
     {
-        public static void Postfix(LaunchPad __instance, RocketModuleCluster landedRocket)
+        public static void Postfix(LaunchPad __instance, LaunchableRocketCluster landedRocket)
         {
             if (landedRocket == null)
                 return;
 
-            // Get all modules attached to this rocket
-            var craftInterface = landedRocket.CraftInterface;
-            if (craftInterface == null)
+            Clustercraft craft = landedRocket.GetComponent<Clustercraft>();
+            if (craft == null || craft.ModuleInterface == null)
                 return;
 
-            foreach (Ref<RocketModuleCluster> moduleRef in craftInterface.ClusterModules)
+            var modules = new System.Collections.Generic.List<Ref<RocketModuleCluster>>(craft.ModuleInterface.ClusterModules);
+
+            foreach (Ref<RocketModuleCluster> moduleRef in modules)
             {
                 RocketModuleCluster module = moduleRef.Get();
                 if (module == null)
@@ -34,7 +29,6 @@ namespace BetterSpaceHarvesting
                 CargoBayCluster cargoBay = module.GetComponent<CargoBayCluster>();
                 if (cargoBay != null)
                 {
-                    // Triggers the "Empty Storage" button action programmatically
                     Storage storage = cargoBay.GetComponent<Storage>();
                     if (storage != null && !storage.IsEmpty())
                     {

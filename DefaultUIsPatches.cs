@@ -1,18 +1,9 @@
 ﻿using HarmonyLib;
-using PeterHan.PLib.Core;
 using PeterHan.PLib.Options;
 
 namespace DefaultUIs
 {
-    public class DefaultToolFiltersMod : KMod.UserMod2
-    {
-        public override void OnLoad(Harmony harmony)
-        {
-            base.OnLoad(harmony);
-            PUtil.InitLibrary();
-            new POptions().RegisterOptions(this, typeof(ToolFilterOptions));
-        }
-    }
+    // DefaultToolFiltersMod removed from here to prevent duplicate UserMod2 error!
 
     // Helper method to set active filters on FilteredDragTool.currentFilters
     internal static class FilteredToolHelper
@@ -22,7 +13,6 @@ namespace DefaultUIs
             if (tool == null)
                 return;
 
-            // Retrieve the protected 'currentFilters' array via Traverse
             var filters = Traverse.Create(tool).Field("currentFilters").GetValue<ToolParameterMenu.ToggleData[]>();
             if (filters == null)
                 return;
