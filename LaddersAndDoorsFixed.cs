@@ -4,6 +4,7 @@ using UnityEngine;
 
 namespace LaddersAndDoorsFixed
 {
+    // 1. Configure the Building Rules (BuildLocationRule & Replacement Settings)
     [HarmonyPatch(typeof(BuildingDef), nameof(BuildingDef.PostProcess))]
     public static class BuildingDef_PostProcess_Patch
     {
@@ -11,59 +12,80 @@ namespace LaddersAndDoorsFixed
         {
             if (__instance == null) return;
 
-            // Target Ladder Types: Ladder, Plastic Ladder, Fire Pole
+            // Target Ladder Types
             if (__instance.PrefabID == LadderConfig.ID ||
                 __instance.PrefabID == LadderFastConfig.ID ||
                 __instance.PrefabID == FirePoleConfig.ID)
             {
-                // Allow ladders to be placed directly on solid tile cells
                 __instance.BuildLocationRule = BuildLocationRule.Anywhere;
+                __instance.ReplacementLayer = ObjectLayer.NumLayers; // Handled by replacement tags
 
-                // Configure replacement settings targeting solid floor tiles
-                __instance.ReplacementLayer = ObjectLayer.NumLayers; // Uses default replacement handling
-
-                if (__instance.ReplacementCandidateLayers == null)
-                    __instance.ReplacementCandidateLayers = new List<ObjectLayer>();
-
+                __instance.ReplacementCandidateLayers ??= new List<ObjectLayer>();
                 if (!__instance.ReplacementCandidateLayers.Contains(ObjectLayer.FoundationTile))
                     __instance.ReplacementCandidateLayers.Add(ObjectLayer.FoundationTile);
 
-                if (__instance.ReplacementTags == null)
-                    __instance.ReplacementTags = new List<Tag>();
-
+                __instance.ReplacementTags ??= new List<Tag>();
                 if (!__instance.ReplacementTags.Contains(GameTags.FloorTiles))
                     __instance.ReplacementTags.Add(GameTags.FloorTiles);
             }
 
-            // Target Door Types: Manual Airlock, Mechanized Airlock, Bunker Door, Pneumatic Door
+            // Target Door Types
             if (__instance.PrefabID == ManualPressureDoorConfig.ID ||
                 __instance.PrefabID == PressureDoorConfig.ID ||
                 __instance.PrefabID == BunkerDoorConfig.ID ||
                 __instance.PrefabID == DoorConfig.ID)
             {
-                // Relax build rules so doors can overlap tiles and background walls
                 __instance.BuildLocationRule = BuildLocationRule.Anywhere;
 
-                // Configure candidate layers to allow replacing BOTH Floor Tiles and Drywall (Backwall)
-                if (__instance.ReplacementCandidateLayers == null)
-                    __instance.ReplacementCandidateLayers = new List<ObjectLayer>();
-
+                __instance.ReplacementCandidateLayers ??= new List<ObjectLayer>();
                 if (!__instance.ReplacementCandidateLayers.Contains(ObjectLayer.FoundationTile))
                     __instance.ReplacementCandidateLayers.Add(ObjectLayer.FoundationTile);
-
                 if (!__instance.ReplacementCandidateLayers.Contains(ObjectLayer.Backwall))
                     __instance.ReplacementCandidateLayers.Add(ObjectLayer.Backwall);
 
-                // Configure replacement tags matching Tiles and Drywalls
-                if (__instance.ReplacementTags == null)
-                    __instance.ReplacementTags = new List<Tag>();
-
+                __instance.ReplacementTags ??= new List<Tag>();
                 if (!__instance.ReplacementTags.Contains(GameTags.FloorTiles))
                     __instance.ReplacementTags.Add(GameTags.FloorTiles);
-
                 if (!__instance.ReplacementTags.Contains(GameTags.Backwall))
                     __instance.ReplacementTags.Add(GameTags.Backwall);
             }
+        }
+    }
+
+    // 2. Override the "Must be built in unoccupied space" check
+    [HarmonyPatch(typeof(BuildingDef), nameof(BuildingDef.IsValidBuildLocation), new[] { typeof(GameObject), typeof(int), typeof(Orientation) })]
+    public static class BuildingDef_IsValidBuildLocation_Patch
+    {
+        public static bool Prefix(BuildingDef __instance, GameObject source_new_building, int cell, Orientation orientation, ref string fail_reason, ref bool __result)
+        {
+            // Check if this is one of our modded Ladders or Doors
+            bool isTargetBuilding = __instance.PrefabID == LadderConfig.ID ||
+                                   __instance.PrefabID == LadderFastConfig.ID ||
+                                   __instance.PrefabID == FirePoleConfig.ID ||
+                                   __instance.PrefabID == ManualPressureDoorConfig.ID ||
+                                   __instance.PrefabID == PressureDoorConfig.ID ||
+                                   __instance.PrefabID == BunkerDoorConfig.ID ||
+                                   __instance.PrefabID == DoorConfig.ID;
+
+            if (!isTargetBuilding) return true; // Run original game logic for all other buildings
+
+            // Get the object occupying the cell foundation/tile layer
+            GameObject existingObject = Grid.Objects[cell, (int)ObjectLayer.FoundationTile];
+
+            // If there's a tile here that matches our replacement tag (like Mesh Tile, Solid Tile, etc.)
+            if (existingObject != null)
+            {
+                KPrefabID existingKPrefab = existingObject.GetComponent<KPrefabID>();
+                if (existingKPrefab != null && existingKPrefab.HasAnyTags(__instance.ReplacementTags))
+                {
+                    // Force ONI to consider this placement valid!
+                    __result = true;
+                    fail_reason = null;
+                    return false; // Skip vanilla validity check
+                }
+            }
+
+            return true; // Fallback to standard check if no replaceable tile is present
         }
     }
 }
