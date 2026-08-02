@@ -5,12 +5,12 @@ using System;
 
 namespace LaddersAndDoorsFixed
 {
-    [HarmonyPatch(typeof(Db), "Initialize")]
-    public static class LaddersAndDoorsFixed_Db_Initialize_Patch
+    // Fix: Inject into LoadGeneratedBuildings where Assets.BuildingDefs is fully populated
+    [HarmonyPatch(typeof(GeneratedBuildings), nameof(GeneratedBuildings.LoadGeneratedBuildings))]
+    public static class LaddersAndDoorsFixed_GeneratedBuildings_Patch
     {
         public static void Postfix()
         {
-            // Target IDs for vanilla Ladders, Doors, and the commonly modded "InsulatedDoor"
             string[] targetIds = new string[]
             {
                 "Ladder",             // Regular Ladder
@@ -20,20 +20,44 @@ namespace LaddersAndDoorsFixed
                 "ManualPressureDoor", // Manual Airlock
                 "PressureDoor",       // Mechanized Airlock
                 "BunkerDoor",         // Bunker Door
-                "InsulatedDoor"       // Support for modded Insulated Doors
+                "InsulatedDoor"       // Insulated Door
             };
 
-            // Loop through each ID and patch their BuildingDef rules
             foreach (string id in targetIds)
             {
                 BuildingDef def = Assets.GetBuildingDef(id);
                 if (def != null)
                 {
-                    // Treat like Drywall: allows placement anywhere, ignoring solid tile collisions
-                    def.BuildLocationRule = BuildLocationRule.Anywhere;
-
-                    // Prevent the building from being disabled ("Entombed") if it overlaps with a solid tile
+                    // 1. Prevent disabling when overlapping with solid tiles
                     def.Entombable = false;
+
+                    // 2. Adopt Drywall's Build Location Rule
+                    def.BuildLocationRule = BuildLocationRule.NotInTiles;
+
+                    // 3. Move them to the Backwall object layer so they don't conflict with FoundationTiles (Solid Tiles)
+                    def.ObjectLayer = ObjectLayer.Backwall;
+
+                    // Note: We deliberately DO NOT change 'SceneLayer' or 'ForegroundLayer'. 
+                    // This ensures Doors and Ladders still render in front of pipes/drywall visually!
+
+                    // 4. If it's a Door, it normally uses TileLayer = FoundationTile. Nullify this conflict.
+                    if (def.TileLayer == ObjectLayer.FoundationTile)
+                    {
+                        def.TileLayer = ObjectLayer.Backwall;
+                    }
+
+                    // 5. Adopt Drywall's Replacement Logic
+                    def.ReplacementLayer = ObjectLayer.ReplacementBackwall;
+                    def.ReplacementCandidateLayers = new List<ObjectLayer>
+                    {
+                        ObjectLayer.FoundationTile,
+                        ObjectLayer.Backwall
+                    };
+                    def.ReplacementTags = new List<Tag>
+                    {
+                        GameTags.FloorTiles,
+                        GameTags.Backwall
+                    };
                 }
             }
         }
