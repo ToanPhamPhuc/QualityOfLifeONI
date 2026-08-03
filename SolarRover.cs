@@ -2,6 +2,7 @@
 using KSerialization;
 using Klei.AI;
 using UnityEngine;
+
 namespace QualityOfLifeONI
 {
     [SerializationConfig(MemberSerialization.OptIn)]
@@ -17,10 +18,16 @@ namespace QualityOfLifeONI
         private AmountInstance batteryAmount;
         private Effects effects;
 
+        // AI variables
+        private RoverSolarRechargeChore rechargeChore;
+        private float searchCooldown = 0f;
+
+        // Exposed so the Chore can ask if it should stop charging
+        public bool IsChargingExpected => isCharging;
+
         protected override void OnSpawn()
         {
             base.OnSpawn();
-            // Hook into the Rover's internal chemical battery and effects system
             batteryAmount = this.gameObject.GetAmounts().Get(Db.Get().Amounts.InternalChemicalBattery);
             effects = this.gameObject.GetComponent<Effects>();
         }
@@ -31,57 +38,62 @@ namespace QualityOfLifeONI
 
             float currentCyclePercent = GameClock.Instance.GetCurrentCycleAsPercentage();
             float currentBatteryPercent = (batteryAmount.value / batteryAmount.GetMax()) * 100f;
-
-            // Calculate if we are between block 5 and 19. 
-            // 1 cycle = 24 blocks. Block 5 = 5/24, Block 19 = 19/24.
             bool isDaytime = currentCyclePercent >= (5f / 24f) && currentCyclePercent <= (19f / 24f);
 
-            // State Machine: Check if we should toggle charging ON or OFF
+            // Toggle logic
             if (isCharging)
             {
-                // Stop if we hit the high threshold, OR if daytime ends
                 if (currentBatteryPercent >= stopChargingPercent || !isDaytime)
-                {
                     isCharging = false;
-                }
             }
             else
             {
-                // Start if we drop below the low threshold during daytime
                 if (currentBatteryPercent <= startChargingPercent && isDaytime)
-                {
                     isCharging = true;
-                }
             }
 
-            // Apply charging logic
+            // AI CHORE MANAGEMENT & CHARGING logic
             if (isCharging)
             {
+                if (searchCooldown > 0f) searchCooldown -= dt;
+
+                // If chore died (couldn't find light) and cooldown is done, create a new one to hunt again
+                if ((rechargeChore == null || rechargeChore.isComplete) && searchCooldown <= 0f)
+                {
+                    rechargeChore = new RoverSolarRechargeChore(this, this);
+                    searchCooldown = 5f; // Wait 5 seconds before making another chore to prevent CPU lag
+                }
+
+                // Actually apply charge if we are standing in the light
                 int cell = Grid.PosToCell(this.gameObject);
                 if (Grid.IsValidCell(cell))
                 {
                     int lux = Grid.LightIntensity[cell];
-
-                    // Use the exact Solar Panel formula: lux * 0.00053, capped at 380W 
                     float watts = Mathf.Clamp((float)lux * 0.00053f, 0f, 380f);
 
                     if (watts > 0)
                     {
-                        // Convert watts to joules for this 200ms tick and apply it
-                        float joules = watts * dt;
-                        batteryAmount.ApplyDelta(joules);
+                        batteryAmount.ApplyDelta(watts * dt);
 
-                        // Activate the vanilla Rover charging visual effect 
                         if (effects != null && !effects.HasEffect("ScoutBotCharging"))
                         {
                             effects.Add("ScoutBotCharging", false);
                         }
-                        return; // Successfully charged this tick, skip the shut-off below
+                        return;
                     }
                 }
             }
+            else
+            {
+                // If it hits 100% or night falls, kill the chore so it can go back to work
+                if (rechargeChore != null && !rechargeChore.isComplete)
+                {
+                    rechargeChore.Cancel("Charging finished or daytime ended");
+                    rechargeChore = null;
+                }
+            }
 
-            // If we reach here, we are either not charging, or in total darkness. Turn off the effect.
+            // Remove visual effect if we aren't actively getting watts
             if (effects != null && effects.HasEffect("ScoutBotCharging"))
             {
                 effects.Remove("ScoutBotCharging");
@@ -89,25 +101,12 @@ namespace QualityOfLifeONI
         }
 
         // --- IActivationRangeTarget Implementation (For the UI Slider) ---
-
-        // Note: The UI slider binds the Left/Bottom slider to ActivateValue and the Right/Top to DeactivateValue.
-        public float ActivateValue
-        {
-            get => startChargingPercent;
-            set => startChargingPercent = value;
-        }
-
-        public float DeactivateValue
-        {
-            get => stopChargingPercent;
-            set => stopChargingPercent = value;
-        }
-
+        public float ActivateValue { get => startChargingPercent; set => startChargingPercent = value; }
+        public float DeactivateValue { get => stopChargingPercent; set => stopChargingPercent = value; }
         public float MinValue => 0f;
         public float MaxValue => 100f;
         public bool UseWholeNumbers => true;
 
-        // Custom text strings for the Rover UI
         public string ActivateTooltip => "The Rover will start solar charging when battery falls below this percentage";
         public string DeactivateTooltip => "The Rover will stop charging when battery reaches this percentage";
         public string ActivationRangeTitleText => "Rover Solar Charging Thresholds";
