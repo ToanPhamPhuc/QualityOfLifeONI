@@ -36,6 +36,18 @@ namespace QualityOfLifeONI
         {
             if (batteryAmount == null) return;
 
+            // --- CRASH PREVENTION SAFEGUARDS ---
+            // 1. If the Rover is still inside the Lander/Rocket pod, DO NOT RUN.
+            if (this.transform.parent != null) return;
+
+            // 2. If the Rover hasn't been assigned to a valid World/Grid cell yet, DO NOT RUN.
+            int currentCell = Grid.PosToCell(this.gameObject);
+            if (!Grid.IsValidCell(currentCell)) return;
+
+            WorldContainer world = this.gameObject.GetMyWorld();
+            if (world == null) return;
+            // -----------------------------------
+
             float currentCyclePercent = GameClock.Instance.GetCurrentCycleAsPercentage();
             float currentBatteryPercent = (batteryAmount.value / batteryAmount.GetMax()) * 100f;
             bool isDaytime = currentCyclePercent >= (5f / 24f) && currentCyclePercent <= (19f / 24f);
@@ -61,31 +73,27 @@ namespace QualityOfLifeONI
                 if ((rechargeChore == null || rechargeChore.isComplete) && searchCooldown <= 0f)
                 {
                     rechargeChore = new RoverSolarRechargeChore(this, this);
-                    searchCooldown = 5f; // Wait 5 seconds before making another chore to prevent CPU lag
+                    searchCooldown = 5f; // Cooldown to save CPU performance
                 }
 
-                // Actually apply charge if we are standing in the light
-                int cell = Grid.PosToCell(this.gameObject);
-                if (Grid.IsValidCell(cell))
+                // Apply charging if standing in light
+                int lux = Grid.LightIntensity[currentCell];
+                float watts = Mathf.Clamp((float)lux * 0.00053f, 0f, 380f);
+
+                if (watts > 0)
                 {
-                    int lux = Grid.LightIntensity[cell];
-                    float watts = Mathf.Clamp((float)lux * 0.00053f, 0f, 380f);
+                    batteryAmount.ApplyDelta(watts * dt);
 
-                    if (watts > 0)
+                    if (effects != null && !effects.HasEffect("ScoutBotCharging"))
                     {
-                        batteryAmount.ApplyDelta(watts * dt);
-
-                        if (effects != null && !effects.HasEffect("ScoutBotCharging"))
-                        {
-                            effects.Add("ScoutBotCharging", false);
-                        }
-                        return;
+                        effects.Add("ScoutBotCharging", false);
                     }
+                    return;
                 }
             }
             else
             {
-                // If it hits 100% or night falls, kill the chore so it can go back to work
+                // Cancel chore when daytime ends or battery is full
                 if (rechargeChore != null && !rechargeChore.isComplete)
                 {
                     rechargeChore.Cancel("Charging finished or daytime ended");
@@ -93,7 +101,7 @@ namespace QualityOfLifeONI
                 }
             }
 
-            // Remove visual effect if we aren't actively getting watts
+            // Turn off effect if no active wattage
             if (effects != null && effects.HasEffect("ScoutBotCharging"))
             {
                 effects.Remove("ScoutBotCharging");
@@ -101,16 +109,48 @@ namespace QualityOfLifeONI
         }
 
         // --- IActivationRangeTarget Implementation (For the UI Slider) ---
-        public float ActivateValue { get => startChargingPercent; set => startChargingPercent = value; }
-        public float DeactivateValue { get => stopChargingPercent; set => stopChargingPercent = value; }
+
+        // Top Slider in UI (ActivateValue) -> Stop Charging (High threshold, must be >= Bottom)
+        public float ActivateValue
+        {
+            get => stopChargingPercent;
+            set
+            {
+                stopChargingPercent = value;
+                // If Stop goes below Start, push Start down with it
+                if (stopChargingPercent < startChargingPercent)
+                {
+                    startChargingPercent = stopChargingPercent;
+                }
+            }
+        }
+
+        // Bottom Slider in UI (DeactivateValue) -> Start Charging (Low threshold, must be <= Top)
+        public float DeactivateValue
+        {
+            get => startChargingPercent;
+            set
+            {
+                startChargingPercent = value;
+                // If Start goes above Stop, push Stop up with it
+                if (startChargingPercent > stopChargingPercent)
+                {
+                    stopChargingPercent = startChargingPercent;
+                }
+            }
+        }
+
         public float MinValue => 0f;
         public float MaxValue => 100f;
         public bool UseWholeNumbers => true;
 
-        public string ActivateTooltip => "The Rover will start solar charging when battery falls below this percentage";
-        public string DeactivateTooltip => "The Rover will stop charging when battery reaches this percentage";
         public string ActivationRangeTitleText => "Rover Solar Charging Thresholds";
-        public string ActivateSliderLabelText => "Start Charging";
-        public string DeactivateSliderLabelText => "Stop Charging";
+
+        // Top slider controls Stop Charging, Bottom slider controls Start Charging
+        public string ActivateSliderLabelText => "Stop Charging";
+        public string DeactivateSliderLabelText => "Start Charging";
+
+        public string ActivateTooltip => "The Rover will stop charging when battery reaches this percentage";
+        public string DeactivateTooltip => "The Rover will start solar charging when battery falls below this percentage";
     }
 }
