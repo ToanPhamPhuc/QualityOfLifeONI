@@ -1,33 +1,42 @@
 ﻿using HarmonyLib;
 
-namespace BeetaSleepsAtNight
+namespace QualityOfLifeONI // Ensure namespace matches so it can access ModInit easily
 {
-    // Patches the monitor that dictates when a Beeta decides to go to sleep
-    [HarmonyPatch(typeof(BeeSleepMonitor), nameof(BeeSleepMonitor.ShouldSleep))]
-    public class BeeSleepMonitor_ShouldSleep_Patch
+    public static class BeetaSleepsAtNightMod
     {
-        public static void Postfix(BeeSleepMonitor.Instance smi, ref bool __result)
+        public static bool IsBeetaSleepTime()
         {
-            // If the game clock says it's nighttime, override the result to true so they sleep
-            if (GameClock.Instance != null && GameClock.Instance.IsNighttime())
+            if (GameClock.Instance == null) return false;
+
+            // Read safely from our central config
+            int blocks = 3;
+            if (ModInit.Config != null)
             {
-                __result = true;
+                blocks = ModInit.Config.SleepBlocks;
             }
+
+            float timeIntoCycle = GameClock.Instance.GetTime() % 600f;
+            float sleepThreshold = 600f - (blocks * 25f);
+
+            return timeIntoCycle >= sleepThreshold;
         }
     }
 
-    // Patches the state machine that determines when a Beeta is allowed to wake up
-    [HarmonyPatch(typeof(BeeSleepStates), nameof(BeeSleepStates.ShouldWakeUp))]
+    [HarmonyPatch(typeof(BeeSleepMonitor), "ShouldSleep")]
+    public class BeeSleepMonitor_ShouldSleep_Patch
+    {
+        public static void Postfix(ref bool __result)
+        {
+            if (BeetaSleepsAtNightMod.IsBeetaSleepTime()) __result = true;
+        }
+    }
+
+    [HarmonyPatch(typeof(BeeSleepStates), "ShouldWakeUp")]
     public class BeeSleepStates_ShouldWakeUp_Patch
     {
-        public static void Postfix(BeeSleepStates.Instance smi, ref bool __result)
+        public static void Postfix(ref bool __result)
         {
-            // If the bee is about to wake up (e.g., CO2 exposure reached 0) but it is STILL nighttime,
-            // override the result to false so they stay asleep until morning.
-            if (GameClock.Instance != null && GameClock.Instance.IsNighttime())
-            {
-                __result = false;
-            }
+            if (BeetaSleepsAtNightMod.IsBeetaSleepTime()) __result = false;
         }
     }
 }

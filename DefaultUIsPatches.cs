@@ -1,21 +1,15 @@
 ﻿using HarmonyLib;
-using PeterHan.PLib.Options;
 
-namespace DefaultUIs
+namespace QualityOfLifeONI
 {
-    // DefaultToolFiltersMod removed from here to prevent duplicate UserMod2 error!
-
-    // Helper method to set active filters on FilteredDragTool.currentFilters
     internal static class FilteredToolHelper
     {
         public static void SetActiveFilter(FilteredDragTool tool, string targetFilterKey)
         {
-            if (tool == null)
-                return;
+            if (tool == null) return;
 
             var filters = Traverse.Create(tool).Field("currentFilters").GetValue<ToolParameterMenu.ToggleData[]>();
-            if (filters == null)
-                return;
+            if (filters == null) return;
 
             for (int i = 0; i < filters.Length; i++)
             {
@@ -26,25 +20,17 @@ namespace DefaultUIs
         }
     }
 
-    // 1. Patch DigTool's default filters
     [HarmonyPatch(typeof(DigTool), "GetDefaultFilters")]
     public static class DigTool_GetDefaultFilters_Patch
     {
         public static void Postfix(ref ToolParameterMenu.ToggleData[] filters)
         {
-            ToolFilterOptions options = POptions.ReadSettings<ToolFilterOptions>() ?? new ToolFilterOptions();
+            // Use the central config!
+            QoLConfig options = ModInit.Config ?? new QoLConfig();
 
-            ToolParameterMenu.ToggleState tilesState = options.DigTiles
-                ? ToolParameterMenu.ToggleState.On
-                : ToolParameterMenu.ToggleState.Off;
-
-            ToolParameterMenu.ToggleState backwallState = options.DigNaturalBackwall
-                ? ToolParameterMenu.ToggleState.On
-                : ToolParameterMenu.ToggleState.Off;
-
-            ToolParameterMenu.ToggleState plantsState = options.DigPlants
-                ? ToolParameterMenu.ToggleState.On
-                : ToolParameterMenu.ToggleState.Off;
+            ToolParameterMenu.ToggleState tilesState = options.DigTiles ? ToolParameterMenu.ToggleState.On : ToolParameterMenu.ToggleState.Off;
+            ToolParameterMenu.ToggleState backwallState = options.DigNaturalBackwall ? ToolParameterMenu.ToggleState.On : ToolParameterMenu.ToggleState.Off;
+            ToolParameterMenu.ToggleState plantsState = options.DigPlants ? ToolParameterMenu.ToggleState.On : ToolParameterMenu.ToggleState.Off;
 
             filters = new ToolParameterMenu.ToggleData[]
             {
@@ -55,73 +41,45 @@ namespace DefaultUIs
         }
     }
 
-    // 2. Patch Deconstruct Tool Defaults
     [HarmonyPatch(typeof(DeconstructTool), "OnPrefabInit")]
     public static class DeconstructTool_OnPrefabInit_Patch
     {
         public static void Postfix(DeconstructTool __instance)
         {
-            ToolFilterOptions options = POptions.ReadSettings<ToolFilterOptions>() ?? new ToolFilterOptions();
+            QoLConfig options = ModInit.Config ?? new QoLConfig();
 
             string filterKey;
             switch (options.DefaultDeconstructFilter)
             {
-                case ToolFilterOptions.DeconstructFilterOptions.PowerWires:
-                    filterKey = ToolParameterMenu.FILTERLAYERS.WIRES;
-                    break;
-                case ToolFilterOptions.DeconstructFilterOptions.LiquidPipes:
-                    filterKey = ToolParameterMenu.FILTERLAYERS.LIQUIDCONDUIT;
-                    break;
-                case ToolFilterOptions.DeconstructFilterOptions.GasPipes:
-                    filterKey = ToolParameterMenu.FILTERLAYERS.GASCONDUIT;
-                    break;
-                case ToolFilterOptions.DeconstructFilterOptions.ConveyorRails:
-                    filterKey = ToolParameterMenu.FILTERLAYERS.SOLIDCONDUIT;
-                    break;
-                case ToolFilterOptions.DeconstructFilterOptions.Buildings:
-                    filterKey = ToolParameterMenu.FILTERLAYERS.BUILDINGS;
-                    break;
-                case ToolFilterOptions.DeconstructFilterOptions.Automation:
-                    filterKey = ToolParameterMenu.FILTERLAYERS.LOGIC;
-                    break;
-                case ToolFilterOptions.DeconstructFilterOptions.BackgroundBuildings:
-                    filterKey = ToolParameterMenu.FILTERLAYERS.BACKWALL;
-                    break;
-                default:
-                    filterKey = ToolParameterMenu.FILTERLAYERS.ALL;
-                    break;
+                case QoLConfig.DeconstructFilterOptions.PowerWires: filterKey = ToolParameterMenu.FILTERLAYERS.WIRES; break;
+                case QoLConfig.DeconstructFilterOptions.LiquidPipes: filterKey = ToolParameterMenu.FILTERLAYERS.LIQUIDCONDUIT; break;
+                case QoLConfig.DeconstructFilterOptions.GasPipes: filterKey = ToolParameterMenu.FILTERLAYERS.GASCONDUIT; break;
+                case QoLConfig.DeconstructFilterOptions.ConveyorRails: filterKey = ToolParameterMenu.FILTERLAYERS.SOLIDCONDUIT; break;
+                case QoLConfig.DeconstructFilterOptions.Buildings: filterKey = ToolParameterMenu.FILTERLAYERS.BUILDINGS; break;
+                case QoLConfig.DeconstructFilterOptions.Automation: filterKey = ToolParameterMenu.FILTERLAYERS.LOGIC; break;
+                case QoLConfig.DeconstructFilterOptions.BackgroundBuildings: filterKey = ToolParameterMenu.FILTERLAYERS.BACKWALL; break;
+                default: filterKey = ToolParameterMenu.FILTERLAYERS.ALL; break;
             }
 
             FilteredToolHelper.SetActiveFilter(__instance, filterKey);
         }
     }
 
-    // 3. Patch Priority Tool Defaults
     [HarmonyPatch(typeof(PrioritizeTool), "OnPrefabInit")]
     public static class PrioritizeTool_OnPrefabInit_Patch
     {
         public static void Postfix(PrioritizeTool __instance)
         {
-            ToolFilterOptions options = POptions.ReadSettings<ToolFilterOptions>() ?? new ToolFilterOptions();
+            QoLConfig options = ModInit.Config ?? new QoLConfig();
 
             string filterKey;
             switch (options.DefaultPriorityFilter)
             {
-                case ToolFilterOptions.PriorityFilterOptions.Construction:
-                    filterKey = ToolParameterMenu.FILTERLAYERS.CONSTRUCTION;
-                    break;
-                case ToolFilterOptions.PriorityFilterOptions.Digging:
-                    filterKey = ToolParameterMenu.FILTERLAYERS.DIG;
-                    break;
-                case ToolFilterOptions.PriorityFilterOptions.Cleaning:
-                    filterKey = ToolParameterMenu.FILTERLAYERS.CLEAN;
-                    break;
-                case ToolFilterOptions.PriorityFilterOptions.Duties:
-                    filterKey = ToolParameterMenu.FILTERLAYERS.OPERATE;
-                    break;
-                default:
-                    filterKey = ToolParameterMenu.FILTERLAYERS.ALL;
-                    break;
+                case QoLConfig.PriorityFilterOptions.Construction: filterKey = ToolParameterMenu.FILTERLAYERS.CONSTRUCTION; break;
+                case QoLConfig.PriorityFilterOptions.Digging: filterKey = ToolParameterMenu.FILTERLAYERS.DIG; break;
+                case QoLConfig.PriorityFilterOptions.Cleaning: filterKey = ToolParameterMenu.FILTERLAYERS.CLEAN; break;
+                case QoLConfig.PriorityFilterOptions.Duties: filterKey = ToolParameterMenu.FILTERLAYERS.OPERATE; break;
+                default: filterKey = ToolParameterMenu.FILTERLAYERS.ALL; break;
             }
 
             FilteredToolHelper.SetActiveFilter(__instance, filterKey);
