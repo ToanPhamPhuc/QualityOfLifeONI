@@ -3,7 +3,6 @@ using UnityEngine;
 
 namespace QualityOfLifeONI
 {
-    // A custom AI task that tells the Rover to find light and wait in it
     public class RoverSolarRechargeChore : Chore<RoverSolarRechargeChore.StatesInstance>
     {
         public RoverSolarRechargeChore(IStateMachineTarget target, RoverSolarCharger charger)
@@ -15,7 +14,7 @@ namespace QualityOfLifeONI
                   (Action<Chore>)null,
                   (Action<Chore>)null,
                   (Action<Chore>)null,
-                  PriorityScreen.PriorityClass.personalNeeds, // High priority so it drops other tasks
+                  PriorityScreen.PriorityClass.personalNeeds, // High priority so it interrupts work
                   5,
                   false,
                   true,
@@ -35,42 +34,70 @@ namespace QualityOfLifeONI
                 this.charger = charger;
             }
 
-            // Scans the map to find the best, closest sunlit tile
-            public int FindSunlightCell()
+            // Scans the ENTIRE current planetoid for the accessible cell with the highest Lux
+            public int FindBestPlanetoidSunlightCell()
             {
-                int startCell = Grid.PosToCell(this.gameObject);
-                int bestCell = Grid.InvalidCell;
-                int maxLux = 0;
-                int minDistance = 9999;
-                Navigator navigator = this.GetComponent<Navigator>();
+                // Get the world/asteroid the Rover is currently standing on
+                WorldContainer world = this.gameObject.GetMyWorld();
+                if (world == null) return Grid.InvalidCell;
 
+                Navigator navigator = this.GetComponent<Navigator>();
                 if (navigator == null) return Grid.InvalidCell;
 
-                // Search a 30x30 tile radius around the Rover
-                int radius = 30;
-                for (int x = -radius; x <= radius; x++)
-                {
-                    for (int y = -radius; y <= radius; y++)
-                    {
-                        int cell = Grid.OffsetCell(startCell, x, y);
-                        if (Grid.IsValidCell(cell) && Grid.LightIntensity[cell] > 0)
-                        {
-                            int dist = Math.Abs(x) + Math.Abs(y);
+                int startCell = Grid.PosToCell(this.gameObject);
+                Grid.CellToXY(startCell, out int startX, out int startY);
 
-                            // Prioritize brighter cells. If equal brightness, prioritize closer cells.
-                            if (Grid.LightIntensity[cell] > maxLux || (Grid.LightIntensity[cell] == maxLux && dist < minDistance))
+                // Planetoid boundaries
+                Vector2 minVec = world.minimumBounds;
+                Vector2 maxVec = world.maximumBounds;
+
+                int minX = (int)minVec.x;
+                int minY = (int)minVec.y;
+                int maxX = (int)maxVec.x;
+                int maxY = (int)maxVec.y;
+
+                int maxLuxFound = 0;
+                int bestCell = Grid.InvalidCell;
+                int minDistance = int.MaxValue;
+
+                // Scan every cell within the active planetoid
+                for (int x = minX; x <= maxX; x++)
+                {
+                    for (int y = minY; y <= maxY; y++)
+                    {
+                        int cell = Grid.XYToCell(x, y);
+                        if (!Grid.IsValidCell(cell)) continue;
+
+                        int lux = Grid.LightIntensity[cell];
+                        if (lux <= 0) continue;
+
+                        // Case 1: Found a spot with strictly GREATER Lux than anything reachable so far
+                        if (lux > maxLuxFound)
+                        {
+                            // Pathfinding is expensive, so we only check it when we find a better Lux candidate
+                            if (navigator.CanReach(cell))
                             {
-                                // Pathfinding check (expensive, so we do it last)
+                                maxLuxFound = lux;
+                                bestCell = cell;
+                                minDistance = Math.Abs(startX - x) + Math.Abs(startY - y);
+                            }
+                        }
+                        // Case 2: Found a spot with EQUAL maximum Lux (e.g. top surface), pick the closest one
+                        else if (lux == maxLuxFound && maxLuxFound > 0)
+                        {
+                            int dist = Math.Abs(startX - x) + Math.Abs(startY - y);
+                            if (dist < minDistance)
+                            {
                                 if (navigator.CanReach(cell))
                                 {
-                                    maxLux = Grid.LightIntensity[cell];
-                                    minDistance = dist;
                                     bestCell = cell;
+                                    minDistance = dist;
                                 }
                             }
                         }
                     }
                 }
+
                 return bestCell;
             }
         }
@@ -88,10 +115,10 @@ namespace QualityOfLifeONI
             {
                 default_state = find_light;
 
-                // 1. Find a sunny tile
+                // 1. Planetoid-wide search for peak Lux
                 find_light
                     .Enter(smi => {
-                        int cell = smi.FindSunlightCell();
+                        int cell = smi.FindBestPlanetoidSunlightCell();
                         if (cell != Grid.InvalidCell)
                         {
                             smi.sm.targetCell.Set(cell, smi);
@@ -99,11 +126,12 @@ namespace QualityOfLifeONI
                         }
                         else
                         {
-                            smi.StopSM("No accessible light found");
+                            // If no accessible light exists on the planet, fail gracefully
+                            smi.StopSM("No accessible light found on planetoid");
                         }
                     });
 
-                // 2. Walk to that tile
+                // 2. Walk to the highest-Lux tile
                 moving
                     .MoveTo(smi => smi.sm.targetCell.Get(smi), charging, find_light, false);
 
@@ -111,13 +139,15 @@ namespace QualityOfLifeONI
                 charging
                     .PlayAnim("idle_default", KAnim.PlayMode.Loop)
                     .Update((smi, dt) => {
-                        // If the charger component says we are done, end the task
+                        int currentCell = Grid.PosToCell(smi.gameObject);
+
+                        // Stop if fully charged, day ended, or battery UI threshold met
                         if (smi.charger != null && !smi.charger.IsChargingExpected)
                         {
                             smi.StopSM("Finished charging or daytime ended");
                         }
-                        // If the sun moved and we are now in the dark, go find a new spot
-                        else if (Grid.LightIntensity[Grid.PosToCell(smi.gameObject)] == 0)
+                        // If light dropped (e.g. shadow cast, night fall, tile blocked), re-evaluate the best spot
+                        else if (Grid.LightIntensity[currentCell] == 0)
                         {
                             smi.GoTo(find_light);
                         }
