@@ -4,7 +4,7 @@ using HarmonyLib;
 using STRINGS;
 using UnityEngine;
 
-namespace PriorityZeroMod
+namespace QualityOfLifeONI
 {
     // Custom MonoBehaviour attached to our button to listen for the Backslash key
     public class PriorityZeroHotkey : MonoBehaviour
@@ -73,7 +73,7 @@ namespace PriorityZeroMod
             var buttons_basic = Traverse.Create(__instance).Field("buttons_basic").GetValue<List<PriorityButton>>();
             var button_toggleHigh = Traverse.Create(__instance).Field("button_toggleHigh").GetValue<KToggle>();
 
-            if (buttons_basic != null && buttons_basic.Count >= 10)
+            if (buttons_basic != null && buttons_basic.Count >= 10) 
             {
                 PriorityButton exclamationButton = buttons_basic[9];
 

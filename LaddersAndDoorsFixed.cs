@@ -3,7 +3,7 @@ using HarmonyLib;
 using UnityEngine;
 using System;
 
-namespace LaddersAndDoorsFixed
+namespace QualityOfLifeONI
 {
     // Fix: Inject into LoadGeneratedBuildings where Assets.BuildingDefs is fully populated
     [HarmonyPatch(typeof(GeneratedBuildings), nameof(GeneratedBuildings.LoadGeneratedBuildings))]

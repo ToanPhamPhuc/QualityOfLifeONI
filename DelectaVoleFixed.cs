@@ -3,7 +3,7 @@ using Klei.AI;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace FixShoveVoles
+namespace QualityOfLifeONI
 {
     // 1. Fix Standard Shove Vole to lay 100% regular eggs
     [HarmonyPatch(typeof(MoleConfig), nameof(MoleConfig.CreatePrefab))]

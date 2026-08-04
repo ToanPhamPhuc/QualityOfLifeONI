@@ -3,7 +3,7 @@ using HarmonyLib;
 using UnityEngine;
 using static STRINGS.BUILDINGS.PREFABS;
 
-namespace MoreAutomations
+namespace QualityOfLifeONI
 {
 #region Robo-pilot Module fixed
 
