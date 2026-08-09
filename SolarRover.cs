@@ -10,9 +10,9 @@ namespace QualityOfLifeONI
     {
         // The UI thresholds
         [Serialize]
-        private float startChargingPercent = 20f;
+        private float startChargingPercent = 50f;
         [Serialize]
-        private float stopChargingPercent = 100f;
+        private float stopChargingPercent = 95f;
 
         private bool isCharging;
         private AmountInstance batteryAmount;

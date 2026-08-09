@@ -1,11 +1,24 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using HarmonyLib;
-using UnityEngine;
-using static STRINGS.BUILDINGS.PREFABS;
 
 namespace QualityOfLifeONI
 {
-#region Robo-pilot Module fixed
+    #region Robo-pilot Module fixed
+
+    // Helper to add extension methods for RoboPilotModule.cs
+    public static class RoboPilotModuleExtensions
+    {
+        // 1. New method to check if data bank is at least 80kg or full (100kg)
+        public static bool IsEnough(this RoboPilotModule module)
+        {
+            if (module == null) return false;
+            bool isFull = module.IsFull();
+            bool isEnough = module.GetDataBanksStored() >= 80f; // Fixed: use correct method
+            return isFull || isEnough;
+                
+        }
+    }
 
     // 1. Add Logic Output Port at Offset (0, 1)
     [HarmonyPatch(typeof(RoboPilotModuleConfig), nameof(RoboPilotModuleConfig.CreateBuildingDef))]
@@ -18,9 +31,9 @@ namespace QualityOfLifeONI
                 LogicPorts.Port.OutputPort(
                     LogicSwitch.PORT_ID,
                     new CellOffset(0, 1),
-                    "Data Bank Full Signal",
-                    "Sends a Green signal when Data Banks are fully loaded (100 kg), otherwise Red signal.",
-                    "Data Banks Not Full",
+                    "Data Bank Signal",
+                    "Sends a Green signal when Data Banks are at least 80/100kg, otherwise Red signal.",
+                    "Data Banks required value not met",
                     false
                 )
             };
@@ -38,10 +51,16 @@ namespace QualityOfLifeONI
             // Update signal whenever storage changes
             __instance.Subscribe((int)GameHashes.OnStorageChange, _ => UpdateAutomationSignal(__instance));
 
-            // FIX: Use GameScheduler to delay signal update by 0.2 seconds after spawn/load
-            GameScheduler.Instance.Schedule("DeferredRoboPilotSignal", 0.2f, _ => UpdateAutomationSignal(__instance));
+            ScheduleRecurringSignalUpdate(__instance);
         }
 
+        // Method to checking logic signal every 5 seconds
+        private static void ScheduleRecurringSignalUpdate(RoboPilotModule module)
+        {
+            if (module == null || module.gameObject == null) return;
+            UpdateAutomationSignal(module);
+            GameScheduler.Instance.Schedule("RoboPilotSignalUpdate", 5f, _ => ScheduleRecurringSignalUpdate(module));
+        }
         public static void UpdateAutomationSignal(RoboPilotModule module)
         {
             if (module == null) return;
@@ -49,9 +68,10 @@ namespace QualityOfLifeONI
             LogicPorts component = module.GetComponent<LogicPorts>();
             if (component != null)
             {
-                bool isFull = module.IsFull();
-                component.SendSignal(LogicSwitch.PORT_ID, isFull ? 1 : 0);
+                bool isEnough = module.IsEnough();
+                component.SendSignal(LogicSwitch.PORT_ID, isEnough ? 1 : 0);
             }
+            
         }
     }
 

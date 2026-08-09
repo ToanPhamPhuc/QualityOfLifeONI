@@ -21,12 +21,17 @@ namespace QualityOfLifeONI
                 if (SaveLoader.Instance != null && Game.Instance != null)
                 {
                     Debug.Log("[Emergency Crash Save] Game crash detected via ShowDialog! Attempting emergency save...");
-
+                    /* SAVE TO saveC:\Users\ADMIN\OneDrive\Documents\Klei\OxygenNotIncluded\save_files
                     // Get the player's standard save directory
                     string saveFolder = SaveLoader.GetSavePrefixAndCreateFolder();
 
                     // Create a unique file specifically for the crash so we don't corrupt their main save
                     string filename = Path.Combine(saveFolder, "Emergency_Crash_Save.sav");
+                    */
+
+                    // SAVE TO DESKTOP INSTEAD
+                    string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                    string filename = Path.Combine(desktopPath, "Emergency_Crash_Save.sav");
 
                     // Force the save. 
                     // Arg 2 (isAutoSave) = false
