@@ -6,8 +6,6 @@ using HarmonyLib;
 using KMod;
 using SanchozzONIMods.Lib;
 using UnityEngine;
-using UnityEngine.Diagnostics;
-using Utils = SanchozzONIMods.Lib.Utils;
 
 namespace WrangleCarry
 {
@@ -83,6 +81,20 @@ namespace WrangleCarry
 
         // Token: 0x04000004 RID: 4
         private const string chest = "snapTo_chest";
+
+        // Updates CreatureFetch priority to 9 (9000 internal) after database loads
+        [HarmonyPatch(typeof(Db), "Initialize")]
+        private static class Db_Initialize_PriorityPatch
+        {
+            private static void Postfix()
+            {
+                ChoreType creatureFetch = Db.Get()?.ChoreTypes?.CreatureFetch;
+                if (creatureFetch != null)
+                {
+                    Traverse.Create(creatureFetch).Field("priority").SetValue(9000);
+                }
+            }
+        }
 
         // Token: 0x02000006 RID: 6
         [HarmonyPatch(typeof(ChoreTypes), "Add")]
