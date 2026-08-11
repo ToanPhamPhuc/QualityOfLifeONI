@@ -6,6 +6,8 @@ using HarmonyLib;
 using KMod;
 using SanchozzONIMods.Lib;
 using UnityEngine;
+using UnityEngine.Diagnostics;
+using Utils = SanchozzONIMods.Lib.Utils;
 
 namespace WrangleCarry
 {
