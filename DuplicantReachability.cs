@@ -2,7 +2,7 @@
 
 namespace DuplicantReachability
 {
-    // Fix Deconstruction Reachability for Boxed Buildings
+    // 1. Fix Deconstruction Reachability
     [HarmonyPatch(typeof(Deconstructable), "OnSpawn")]
     public class Deconstructable_OnSpawn_Patch
     {
@@ -13,7 +13,6 @@ namespace DuplicantReachability
             Building building = __instance.GetComponent<Building>();
             if (building == null || building.Def == null) return;
 
-            // Skip 1x1 structures and single-tile items
             if (building.Def.WidthInCells <= 1 && building.Def.HeightInCells <= 1) return;
 
             CellOffset[] placementOffsets = AccessTools.PropertyGetter(typeof(Deconstructable), "placementOffsets")
@@ -21,7 +20,6 @@ namespace DuplicantReachability
 
             if (placementOffsets == null) return;
 
-            // Apply corner-inclusive reachability table
             CellOffset[][] offsetTable = OffsetGroups.BuildReachabilityTable(
                 placementOffsets,
                 OffsetGroups.InvertedStandardTableWithCorners,
@@ -32,7 +30,7 @@ namespace DuplicantReachability
         }
     }
 
-    // Fix Construction / Building Reachability for Boxed Blueprints
+    // 2. Fix Construction & Material Supply Delivery Reachability
     [HarmonyPatch(typeof(Constructable), "OnSpawn")]
     public class Constructable_OnSpawn_Patch
     {
@@ -43,17 +41,22 @@ namespace DuplicantReachability
             BuildingUnderConstruction buildingUC = __instance.GetComponent<BuildingUnderConstruction>();
             if (buildingUC == null || buildingUC.Def == null) return;
 
-            // Skip 1x1 structures and single-tile items
-            if (buildingUC.Def.WidthInCells <= 1 && buildingUC.Def.HeightInCells <= 1) return;
-
-            // Calculate reachability table using corners for build errand ghosts
+            // Expand reachability table for all multi-cell ghosts/blueprints using corners
             CellOffset[][] offsetTable = OffsetGroups.BuildReachabilityTable(
                 buildingUC.Def.PlacementOffsets,
                 OffsetGroups.InvertedStandardTableWithCorners,
                 buildingUC.Def.ConstructionOffsetFilter
             );
 
+            // Update Constructable offset table
             __instance.SetOffsetTable(offsetTable);
+
+            // Update Workable offset table (for construction work)
+            Workable workable = __instance.GetComponent<Workable>();
+            if (workable != null)
+            {
+                workable.SetOffsetTable(offsetTable);
+            }
         }
     }
 }
