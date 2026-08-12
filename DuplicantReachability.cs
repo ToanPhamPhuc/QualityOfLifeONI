@@ -30,7 +30,7 @@ namespace DuplicantReachability
         }
     }
 
-    // 2. Fix Construction & Material Supply Delivery Reachability
+    // 2. Fix Construction Work AND Material Delivery (Fetch Errands) Reachability
     [HarmonyPatch(typeof(Constructable), "OnSpawn")]
     public class Constructable_OnSpawn_Patch
     {
@@ -41,17 +41,20 @@ namespace DuplicantReachability
             BuildingUnderConstruction buildingUC = __instance.GetComponent<BuildingUnderConstruction>();
             if (buildingUC == null || buildingUC.Def == null) return;
 
-            // Expand reachability table for all multi-cell ghosts/blueprints using corners
+            // Skip 1x1 structures
+            if (buildingUC.Def.WidthInCells <= 1 && buildingUC.Def.HeightInCells <= 1) return;
+
+            // Build corner-inclusive reachability table for both building work and material supplying
             CellOffset[][] offsetTable = OffsetGroups.BuildReachabilityTable(
                 buildingUC.Def.PlacementOffsets,
                 OffsetGroups.InvertedStandardTableWithCorners,
                 buildingUC.Def.ConstructionOffsetFilter
             );
 
-            // Update Constructable offset table
+            // 1. Set offset table on Constructable (used by supply errands and construction chores)
             __instance.SetOffsetTable(offsetTable);
 
-            // Update Workable offset table (for construction work)
+            // 2. Set offset table on Workable (used by duplicant construction work)
             Workable workable = __instance.GetComponent<Workable>();
             if (workable != null)
             {
