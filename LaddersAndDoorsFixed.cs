@@ -9,7 +9,6 @@ namespace QualityOfLifeONI
     {
         public static void Postfix()
         {
-            // Separate Ladders and Doors to treat their ObjectLayers differently
             string[] ladderIds = new string[]
             {
                 "Ladder",             // Regular Ladder
@@ -35,17 +34,28 @@ namespace QualityOfLifeONI
                     def.Entombable = false;
                     def.BuildLocationRule = BuildLocationRule.NotInTiles;
 
-                    // Use ReplacementTile so the ladder's construction ghost 
-                    // knows it is replacing a FoundationTile (Solid Tile)
+                    // Allows the construction ghost to render over existing items
                     def.ReplacementLayer = ObjectLayer.ReplacementTile;
-                    def.ReplacementCandidateLayers = new List<ObjectLayer>
-                    {
-                        ObjectLayer.FoundationTile
-                    };
-                    def.ReplacementTags = new List<Tag>
-                    {
-                        GameTags.FloorTiles
-                    };
+
+                    if (def.ReplacementCandidateLayers == null)
+                        def.ReplacementCandidateLayers = new List<ObjectLayer>();
+
+                    if (def.ReplacementTags == null)
+                        def.ReplacementTags = new List<Tag>();
+
+                    // Allow replacing Solid Tiles (FoundationTile) AND existing Ladders/Poles (Building)
+                    if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.FoundationTile))
+                        def.ReplacementCandidateLayers.Add(ObjectLayer.FoundationTile);
+
+                    if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.Building))
+                        def.ReplacementCandidateLayers.Add(ObjectLayer.Building);
+
+                    // Allow replacing Tiles (FloorTiles) AND other Ladders/Poles (Ladders)
+                    if (!def.ReplacementTags.Contains(GameTags.FloorTiles))
+                        def.ReplacementTags.Add(GameTags.FloorTiles);
+
+                    if (!def.ReplacementTags.Contains(GameTags.Ladders))
+                        def.ReplacementTags.Add(GameTags.Ladders);
                 }
             }
 
@@ -58,8 +68,6 @@ namespace QualityOfLifeONI
                     def.Entombable = false;
                     def.BuildLocationRule = BuildLocationRule.NotInTiles;
 
-                    // Doors act as Backwalls (stopping space exposure), so we keep your original logic.
-                    // This intentionally conflicts with Drywall, which is expected.
                     def.ObjectLayer = ObjectLayer.Backwall;
 
                     if (def.TileLayer == ObjectLayer.FoundationTile)
@@ -67,18 +75,25 @@ namespace QualityOfLifeONI
                         def.TileLayer = ObjectLayer.Backwall;
                     }
 
-                    // Doors can replace BOTH Tiles and Drywall
                     def.ReplacementLayer = ObjectLayer.ReplacementBackwall;
-                    def.ReplacementCandidateLayers = new List<ObjectLayer>
-                    {
-                        ObjectLayer.FoundationTile,
-                        ObjectLayer.Backwall
-                    };
-                    def.ReplacementTags = new List<Tag>
-                    {
-                        GameTags.FloorTiles,
-                        GameTags.Backwall
-                    };
+
+                    if (def.ReplacementCandidateLayers == null)
+                        def.ReplacementCandidateLayers = new List<ObjectLayer>();
+
+                    if (def.ReplacementTags == null)
+                        def.ReplacementTags = new List<Tag>();
+
+                    if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.FoundationTile))
+                        def.ReplacementCandidateLayers.Add(ObjectLayer.FoundationTile);
+
+                    if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.Backwall))
+                        def.ReplacementCandidateLayers.Add(ObjectLayer.Backwall);
+
+                    if (!def.ReplacementTags.Contains(GameTags.FloorTiles))
+                        def.ReplacementTags.Add(GameTags.FloorTiles);
+
+                    if (!def.ReplacementTags.Contains(GameTags.Backwall))
+                        def.ReplacementTags.Add(GameTags.Backwall);
                 }
             }
         }
