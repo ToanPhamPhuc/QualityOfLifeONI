@@ -26,7 +26,7 @@ namespace QualityOfLifeONI
                         // If the cell is valid and currently solid (entombing the building)
                         if (Grid.IsValidCell(cell) && Grid.Solid[cell])
                         {
-                            // In ONI, solid tiles (like regolith/sand) are stored in the Solid ObjectLayer
+                            // In ONI, solid tiles (like regolith/sand) are stored in the Solid              ObjectLayer
                             GameObject solidProp = Grid.Objects[cell, (int)ObjectLayer.SolidConduitTile];
                             if (solidProp != null)
                             {
