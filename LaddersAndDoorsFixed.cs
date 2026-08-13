@@ -25,6 +25,14 @@ namespace QualityOfLifeONI
                 "InsulatedDoor"       // Insulated Door
             };
 
+            string[] heavyWattWireIds = new string[]
+            {
+                "HighWattageWire",             // Heavy-Watt Wire
+                "WireRefinedHighWattage",      // Heavy-Watt Conductive Wire
+                "WireBridgeHighWattage",       // Heavy-Watt Joint Plate
+                "WireRefinedBridgeHighWattage" // Heavy-Watt Conductive Joint Plate
+            };
+
             // --- 1. LADDER LOGIC ---
             foreach (string id in ladderIds)
             {
@@ -32,10 +40,9 @@ namespace QualityOfLifeONI
                 if (def != null)
                 {
                     def.Entombable = false;
-                    def.BuildLocationRule = BuildLocationRule.NotInTiles;
 
-                    // Allows the construction ghost to render over existing items
-                    def.ReplacementLayer = ObjectLayer.ReplacementTile;
+                    // Anywhere allows placing WHITE blueprints over solid tiles/terrain
+                    def.BuildLocationRule = BuildLocationRule.Anywhere;
 
                     if (def.ReplacementCandidateLayers == null)
                         def.ReplacementCandidateLayers = new List<ObjectLayer>();
@@ -43,19 +50,18 @@ namespace QualityOfLifeONI
                     if (def.ReplacementTags == null)
                         def.ReplacementTags = new List<Tag>();
 
-                    // Allow replacing Solid Tiles (FoundationTile) AND existing Ladders/Poles (Building)
-                    if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.FoundationTile))
-                        def.ReplacementCandidateLayers.Add(ObjectLayer.FoundationTile);
-
+                    // Replacement rules for upgrading existing ladders/fire poles and tiles
                     if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.Building))
                         def.ReplacementCandidateLayers.Add(ObjectLayer.Building);
 
-                    // Allow replacing Tiles (FloorTiles) AND other Ladders/Poles (Ladders)
-                    if (!def.ReplacementTags.Contains(GameTags.FloorTiles))
-                        def.ReplacementTags.Add(GameTags.FloorTiles);
+                    if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.FoundationTile))
+                        def.ReplacementCandidateLayers.Add(ObjectLayer.FoundationTile);
 
                     if (!def.ReplacementTags.Contains(GameTags.Ladders))
                         def.ReplacementTags.Add(GameTags.Ladders);
+
+                    if (!def.ReplacementTags.Contains(GameTags.FloorTiles))
+                        def.ReplacementTags.Add(GameTags.FloorTiles);
                 }
             }
 
@@ -94,6 +100,39 @@ namespace QualityOfLifeONI
 
                     if (!def.ReplacementTags.Contains(GameTags.Backwall))
                         def.ReplacementTags.Add(GameTags.Backwall);
+                }
+            }
+
+            // --- 3. HEAVY-WATT WIRE & JOINT PLATE LOGIC ---
+            foreach (string id in heavyWattWireIds)
+            {
+                BuildingDef def = Assets.GetBuildingDef(id);
+                if (def != null)
+                {
+                    // Require NotInTiles so ONI enforces tile destruction on completion
+                    def.BuildLocationRule = BuildLocationRule.NotInTiles;
+
+                    // Force set ReplacementTile so building over a tile queues a replacement order
+                    def.ReplacementLayer = ObjectLayer.ReplacementTile;
+
+                    if (def.ReplacementCandidateLayers == null)
+                        def.ReplacementCandidateLayers = new List<ObjectLayer>();
+
+                    if (def.ReplacementTags == null)
+                        def.ReplacementTags = new List<Tag>();
+
+                    // Allow replacing solid tiles (FoundationTile) and other Heavy-Watt Wires
+                    if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.FoundationTile))
+                        def.ReplacementCandidateLayers.Add(ObjectLayer.FoundationTile);
+
+                    if (!def.ReplacementCandidateLayers.Contains(def.ObjectLayer))
+                        def.ReplacementCandidateLayers.Add(def.ObjectLayer);
+
+                    if (!def.ReplacementTags.Contains(GameTags.FloorTiles))
+                        def.ReplacementTags.Add(GameTags.FloorTiles);
+
+                    if (!def.ReplacementTags.Contains(GameTags.Wires))
+                        def.ReplacementTags.Add(GameTags.Wires);
                 }
             }
         }
