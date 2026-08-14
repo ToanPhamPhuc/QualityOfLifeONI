@@ -5,6 +5,16 @@ using UnityEngine;
 
 namespace QualityOfLifeONI
 {
+    // --- 0. MOD ENTRY POINT ---
+    //public class ModInit : KMod.UserMod2
+    //{
+    //    public override void OnLoad(Harmony harmony)
+    //    {
+    //        base.OnLoad(harmony);
+    //        harmony.PatchAll(); // Ensures all Harmony patches below are registered!
+    //    }
+    //}
+
     public enum ModBuildingMode
     {
         Vanilla,
@@ -12,123 +22,25 @@ namespace QualityOfLifeONI
         Background
     }
 
-    // --- 1. SIDE-SCREEN TOGGLE COMPONENTS ---
-
-    // Toggle 1: OVERRIDE MODE (Handled by ONI's default CheckboxSideScreen)
-    public class OverrideModeControl : KMonoBehaviour, ICheckboxControl
-    {
-        public string CheckboxTitleKey => "Mod Settings";
-        public string CheckboxLabel => "OVERRIDE MODE";
-        public string CheckboxTooltip => "Replace solid tiles directly when constructing ladders and doors.";
-
-        public bool GetCheckboxValue() => ModeManager.CurrentMode == ModBuildingMode.Override;
-
-        public void SetCheckboxValue(bool value)
-        {
-            if (value)
-                ModeManager.SetMode(ModBuildingMode.Override);
-            else if (ModeManager.CurrentMode == ModBuildingMode.Override)
-                ModeManager.SetMode(ModBuildingMode.Vanilla);
-        }
-    }
-
-    // Toggle 2: BACKGROUND MODE (Handled by our Custom BackgroundModeSideScreen)
-    public class BackgroundModeControl : KMonoBehaviour
-    {
-        public string CheckboxLabel => "BACKGROUND MODE";
-        public string CheckboxTooltip => "Treat ladders and doors as background structures (like Drywall).";
-
-        public bool GetCheckboxValue() => ModeManager.CurrentMode == ModBuildingMode.Background;
-
-        public void SetCheckboxValue(bool value)
-        {
-            if (value)
-                ModeManager.SetMode(ModBuildingMode.Background);
-            else if (ModeManager.CurrentMode == ModBuildingMode.Background)
-                ModeManager.SetMode(ModBuildingMode.Vanilla);
-        }
-    }
-
-    // --- 2. CUSTOM SIDE SCREEN FOR BACKGROUND MODE ---
-    public class BackgroundModeSideScreen : SideScreenContent
-    {
-        public MultiToggle toggle;
-        public LocText label;
-        public ToolTip tooltip;
-        private BackgroundModeControl target;
-
-        protected override void OnSpawn()
-        {
-            base.OnSpawn();
-            if (toggle != null)
-            {
-                toggle.onClick = (System.Action)Delegate.Combine(toggle.onClick, new System.Action(this.OnClick));
-            }
-        }
-
-        public override bool IsValidForTarget(GameObject target)
-        {
-            return target.GetComponent<BackgroundModeControl>() != null;
-        }
-
-        public override void SetTarget(GameObject target)
-        {
-            base.SetTarget(target);
-            if (target == null) return;
-
-            this.target = target.GetComponent<BackgroundModeControl>();
-            if (this.target == null) return;
-
-            if (label != null) label.text = this.target.CheckboxLabel;
-            if (tooltip != null) tooltip.toolTip = this.target.CheckboxTooltip;
-
-            Refresh();
-        }
-
-        public override void ClearTarget()
-        {
-            base.ClearTarget();
-            this.target = null;
-        }
-
-        private void Refresh()
-        {
-            if (target != null && toggle != null)
-            {
-                toggle.ChangeState(target.GetCheckboxValue() ? 1 : 0);
-            }
-        }
-
-        private void OnClick()
-        {
-            if (target != null)
-            {
-                target.SetCheckboxValue(!target.GetCheckboxValue());
-                Refresh();
-            }
-        }
-    }
-
-    // --- 3. MODE & STATE MANAGER ---
+    // --- 1. MODE & STATE MANAGER ---
     public static class ModeManager
     {
         public static ModBuildingMode CurrentMode = ModBuildingMode.Override;
 
-        public static readonly string[] LadderIds = new string[]
+        public static readonly HashSet<string> TargetBuildingIds = new HashSet<string>
         {
             "Ladder",             // Regular Ladder
             "LadderFast",         // Plastic Ladder
-            "FirePole"            // Fire Pole
-        };
-
-        public static readonly string[] DoorIds = new string[]
-        {
+            "FirePole",           // Fire Pole
             "Door",               // Pneumatic Door
             "ManualPressureDoor", // Manual Airlock
             "PressureDoor",       // Mechanized Airlock
             "BunkerDoor",         // Bunker Door
             "InsulatedDoor"       // Insulated Door
         };
+
+        private static readonly string[] LadderIds = new string[] { "Ladder", "LadderFast", "FirePole" };
+        private static readonly string[] DoorIds = new string[] { "Door", "ManualPressureDoor", "PressureDoor", "BunkerDoor", "InsulatedDoor" };
 
         private class SavedState
         {
@@ -143,12 +55,11 @@ namespace QualityOfLifeONI
 
         private static readonly Dictionary<string, SavedState> VanillaStates = new Dictionary<string, SavedState>();
 
+        public static bool IsTargetBuilding(string id) => !string.IsNullOrEmpty(id) && TargetBuildingIds.Contains(id);
+
         public static void SaveVanillaStates()
         {
-            List<string> allIds = new List<string>(LadderIds);
-            allIds.AddRange(DoorIds);
-
-            foreach (string id in allIds)
+            foreach (string id in TargetBuildingIds)
             {
                 BuildingDef def = Assets.GetBuildingDef(id);
                 if (def != null && !VanillaStates.ContainsKey(id))
@@ -186,7 +97,6 @@ namespace QualityOfLifeONI
             }
         }
 
-        // --- MODE 1: OVERRIDE MODE ---
         private static void ApplyOverrideMode()
         {
             foreach (string id in LadderIds)
@@ -233,13 +143,9 @@ namespace QualityOfLifeONI
             }
         }
 
-        // --- MODE 2: BACKGROUND MODE ---
         private static void ApplyBackgroundMode()
         {
-            List<string> targetIds = new List<string>(LadderIds);
-            targetIds.AddRange(DoorIds);
-
-            foreach (string id in targetIds)
+            foreach (string id in TargetBuildingIds)
             {
                 BuildingDef def = Assets.GetBuildingDef(id);
                 if (def == null) continue;
@@ -286,81 +192,172 @@ namespace QualityOfLifeONI
         }
     }
 
-    // --- 4. HARMONY PATCHES ---
+    // --- 2. BOTTOM-RIGHT TOOL MENU CONTROLLER ---
+    public class LaddersDoorsModeTool : InterfaceTool
+    {
+        public static LaddersDoorsModeTool Instance;
 
-    // Patch 1: Building setup
+        private ToolParameterMenu.ToggleData[] currentFilters;
+
+        protected override void OnPrefabInit()
+        {
+            base.OnPrefabInit();
+            Instance = this;
+        }
+
+        protected override void OnActivateTool()
+        {
+            base.OnActivateTool();
+
+            // Hide priority numbers overlay when selecting mode
+            if (ToolMenu.Instance != null && ToolMenu.Instance.PriorityScreen != null)
+            {
+                ToolMenu.Instance.PriorityScreen.Show(false);
+            }
+
+            BuildFilters();
+            ToolMenu.Instance.toolParameterMenu.PopulateMenu(this.currentFilters);
+            ToolMenu.Instance.toolParameterMenu.onParametersChanged += OnParametersChanged;
+        }
+
+        protected override void OnDeactivateTool(InterfaceTool new_tool)
+        {
+            if (ToolMenu.Instance != null && ToolMenu.Instance.toolParameterMenu != null)
+            {
+                ToolMenu.Instance.toolParameterMenu.onParametersChanged -= OnParametersChanged;
+                ToolMenu.Instance.toolParameterMenu.ClearMenu();
+            }
+
+            base.OnDeactivateTool(new_tool);
+        }
+
+        private void BuildFilters()
+        {
+            currentFilters = new ToolParameterMenu.ToggleData[]
+            {
+                new ToolParameterMenu.ToggleData(
+                    "Override Mode",
+                    ModeManager.CurrentMode == ModBuildingMode.Override ? ToolParameterMenu.ToggleState.On : ToolParameterMenu.ToggleState.Off,
+                    false
+                ),
+                new ToolParameterMenu.ToggleData(
+                    "Background Mode",
+                    ModeManager.CurrentMode == ModBuildingMode.Background ? ToolParameterMenu.ToggleState.On : ToolParameterMenu.ToggleState.Off,
+                    false
+                ),
+                new ToolParameterMenu.ToggleData(
+                    "Vanilla Mode",
+                    ModeManager.CurrentMode == ModBuildingMode.Vanilla ? ToolParameterMenu.ToggleState.On : ToolParameterMenu.ToggleState.Off,
+                    false
+                )
+            };
+        }
+
+        private void OnParametersChanged()
+        {
+            if (currentFilters == null) return;
+
+            foreach (var filter in currentFilters)
+            {
+                if (filter.state == ToolParameterMenu.ToggleState.On)
+                {
+                    if (filter.name == "Override Mode" && ModeManager.CurrentMode != ModBuildingMode.Override)
+                    {
+                        ModeManager.SetMode(ModBuildingMode.Override);
+                        break;
+                    }
+                    else if (filter.name == "Background Mode" && ModeManager.CurrentMode != ModBuildingMode.Background)
+                    {
+                        ModeManager.SetMode(ModBuildingMode.Background);
+                        break;
+                    }
+                    else if (filter.name == "Vanilla Mode" && ModeManager.CurrentMode != ModBuildingMode.Vanilla)
+                    {
+                        ModeManager.SetMode(ModBuildingMode.Vanilla);
+                        break;
+                    }
+                }
+            }
+
+            // Refresh menu options visually
+            BuildFilters();
+            ToolMenu.Instance.toolParameterMenu.PopulateMenu(this.currentFilters);
+        }
+    }
+
+    // --- 3. HARMONY PATCHES ---
+
+    // Safety Patch to prevent crashes when comparing unbound actions
+    [HarmonyPatch(typeof(GameInputMapping), nameof(GameInputMapping.CompareActionKeyCodes))]
+    public static class GameInputMapping_CompareActionKeyCodes_Patch
+    {
+        public static bool Prefix(Action a, Action b, ref bool __result)
+        {
+            if (a == Action.NumActions || a == Action.Invalid ||
+                b == Action.NumActions || b == Action.Invalid)
+            {
+                __result = false;
+                return false; // Skip original method execution to avoid assertion crash
+            }
+
+            return true;
+        }
+    }
+
+    // Save initial vanilla states upon building definition load
     [HarmonyPatch(typeof(GeneratedBuildings), nameof(GeneratedBuildings.LoadGeneratedBuildings))]
-    public static class LaddersAndDoorsFixed_GeneratedBuildings_Patch
+    public static class GeneratedBuildings_LoadGeneratedBuildings_Patch
     {
         public static void Postfix()
         {
             ModeManager.SaveVanillaStates();
             ModeManager.SetMode(ModBuildingMode.Override);
+        }
+    }
 
-            List<string> allTargetIds = new List<string>(ModeManager.LadderIds);
-            allTargetIds.AddRange(ModeManager.DoorIds);
+    // Register custom interface tool to PlayerController
+    [HarmonyPatch(typeof(PlayerController), "OnPrefabInit")]
+    public static class PlayerController_OnPrefabInit_Patch
+    {
+        public static void Postfix(PlayerController __instance)
+        {
+            GameObject toolGo = new GameObject("LaddersDoorsModeTool");
+            toolGo.transform.SetParent(__instance.gameObject.transform);
 
-            foreach (string id in allTargetIds)
+            LaddersDoorsModeTool customTool = toolGo.AddComponent<LaddersDoorsModeTool>();
+
+            // Safely resize the InterfaceTool[] array directly
+            var arr = __instance.tools;
+            if (arr == null)
             {
-                BuildingDef def = Assets.GetBuildingDef(id);
-                if (def != null && def.BuildingComplete != null)
-                {
-                    def.BuildingComplete.AddComponent<OverrideModeControl>();
-                    def.BuildingComplete.AddComponent<BackgroundModeControl>();
-                }
+                __instance.tools = new InterfaceTool[] { customTool };
+            }
+            else
+            {
+                var newArr = new InterfaceTool[arr.Length + 1];
+                Array.Copy(arr, newArr, arr.Length);
+                newArr[arr.Length] = customTool;
+                __instance.tools = newArr;
             }
         }
     }
 
-    // Patch 2: Safe registration of custom side screen UI for BackgroundMode
-    [HarmonyPatch(typeof(DetailsScreen), "OnPrefabInit")]
-    public static class DetailsScreen_OnPrefabInit_Patch
+    // Inject tool icon button into bottom right ToolMenu
+    [HarmonyPatch(typeof(ToolMenu), "CreateBasicTools")]
+    public static class ToolMenu_CreateBasicTools_Patch
     {
-        public static void Postfix(DetailsScreen __instance)
+        public static void Postfix(ToolMenu __instance)
         {
-            // Traverse private field 'sideScreens' safely
-            var sideScreens = Traverse.Create(__instance).Field<List<DetailsScreen.SideScreenRef>>("sideScreens").Value;
-            if (sideScreens == null) return;
-
-            // Find standard checkbox side screen prefab using type name matching
-            DetailsScreen.SideScreenRef originalRef = null;
-            foreach (var ssRef in sideScreens)
+            if (__instance.basicTools != null)
             {
-                if (ssRef.screenPrefab != null && ssRef.screenPrefab.GetType().Name == "CheckboxSideScreen")
-                {
-                    originalRef = ssRef;
-                    break;
-                }
-            }
-
-            if (originalRef != null && originalRef.screenPrefab != null)
-            {
-                // Clone the prefab gameobject
-                GameObject clonedGo = UnityEngine.Object.Instantiate(originalRef.screenPrefab.gameObject, originalRef.screenPrefab.transform.parent);
-                clonedGo.name = "BackgroundModeSideScreen";
-
-                // Destroy original CheckboxSideScreen script on the clone
-                var oldComponent = clonedGo.GetComponent(originalRef.screenPrefab.GetType());
-                if (oldComponent != null)
-                {
-                    UnityEngine.Object.DestroyImmediate(oldComponent);
-                }
-
-                // Attach custom screen component
-                BackgroundModeSideScreen customScreen = clonedGo.AddComponent<BackgroundModeSideScreen>();
-                customScreen.toggle = clonedGo.GetComponentInChildren<MultiToggle>();
-                customScreen.label = clonedGo.GetComponentInChildren<LocText>();
-                customScreen.tooltip = clonedGo.GetComponentInChildren<ToolTip>();
-
-                // Insert into sideScreens list
-                sideScreens.Add(new DetailsScreen.SideScreenRef
-                {
-                    name = "BackgroundModeSideScreen",
-                    screenPrefab = customScreen,
-                    offset = originalRef.offset,
-                    tab = originalRef.tab,
-                    screenInstance = null
-                });
+                __instance.basicTools.Add(ToolMenu.CreateToolCollection(
+                    "Ladders & Doors Mode",
+                    "action_repair",
+                    Action.Invalid, // FIXED: Use Action.Invalid instead of Action.NumActions
+                    "LaddersDoorsModeTool",
+                    "Switches mode for Ladders and Doors",
+                    false
+                ));
             }
         }
     }
