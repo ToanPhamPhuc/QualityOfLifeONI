@@ -36,13 +36,19 @@ namespace QualityOfLifeONI
             Strings.Add("STRINGS.BUILDINGS.PREFABS.SELFTIMERPNEUMATICDOOR.EFFECT", "Automatically opens and locks according to the time of day, completely bypassing the need for automation wire.");
 
             // 2. UI Tool Filters Strings (Ladders & Doors Tool)
+            // Override Mode
             Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.OVERRIDE_MODE", "Override Mode");
+            Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.OVERRIDE_MODE.NAME", "Override Mode");
             Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.OVERRIDE_MODE.TOOLTIP", "Allows ladders and doors to replace solid tiles.");
 
+            // Background Mode
             Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.BACKGROUND_MODE", "Background Mode");
+            Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.BACKGROUND_MODE.NAME", "Background Mode");
             Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.BACKGROUND_MODE.TOOLTIP", "Places ladders and doors on the background layer.");
 
+            // Vanilla Mode
             Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.VANILLA_MODE", "Vanilla Mode");
+            Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.VANILLA_MODE.NAME", "Vanilla Mode");
             Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.VANILLA_MODE.TOOLTIP", "Restores default vanilla building rules.");
 
             // 3. Register Buildings to Plan Menu
