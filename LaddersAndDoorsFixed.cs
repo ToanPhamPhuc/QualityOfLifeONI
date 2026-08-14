@@ -1,32 +1,118 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using HarmonyLib;
 using UnityEngine;
 
 namespace QualityOfLifeONI
 {
-    // --- 1. SIDE-SCREEN TOGGLE COMPONENT ---
-    // ONI automatically renders a toggle side-screen for any building containing an ICheckboxControl component.
+    public enum ModBuildingMode
+    {
+        Vanilla,
+        Override,
+        Background
+    }
+
+    // --- 1. SIDE-SCREEN TOGGLE COMPONENTS ---
+
+    // Toggle 1: OVERRIDE MODE (Handled by ONI's default CheckboxSideScreen)
     public class OverrideModeControl : KMonoBehaviour, ICheckboxControl
     {
         public string CheckboxTitleKey => "Mod Settings";
         public string CheckboxLabel => "OVERRIDE MODE";
-        public string CheckboxTooltip => "Toggle tile replacement/override capabilities for ladders and doors.";
+        public string CheckboxTooltip => "Replace solid tiles directly when constructing ladders and doors.";
 
-        public bool GetCheckboxValue()
-        {
-            return OverrideManager.IsOverrideEnabled;
-        }
+        public bool GetCheckboxValue() => ModeManager.CurrentMode == ModBuildingMode.Override;
 
         public void SetCheckboxValue(bool value)
         {
-            OverrideManager.ToggleOverrideMode(value);
+            if (value)
+                ModeManager.SetMode(ModBuildingMode.Override);
+            else if (ModeManager.CurrentMode == ModBuildingMode.Override)
+                ModeManager.SetMode(ModBuildingMode.Vanilla);
         }
     }
 
-    // --- 2. OVERRIDE STATE MANAGER ---
-    public static class OverrideManager
+    // Toggle 2: BACKGROUND MODE (Handled by our Custom BackgroundModeSideScreen)
+    public class BackgroundModeControl : KMonoBehaviour
     {
-        public static bool IsOverrideEnabled = true;
+        public string CheckboxLabel => "BACKGROUND MODE";
+        public string CheckboxTooltip => "Treat ladders and doors as background structures (like Drywall).";
+
+        public bool GetCheckboxValue() => ModeManager.CurrentMode == ModBuildingMode.Background;
+
+        public void SetCheckboxValue(bool value)
+        {
+            if (value)
+                ModeManager.SetMode(ModBuildingMode.Background);
+            else if (ModeManager.CurrentMode == ModBuildingMode.Background)
+                ModeManager.SetMode(ModBuildingMode.Vanilla);
+        }
+    }
+
+    // --- 2. CUSTOM SIDE SCREEN FOR BACKGROUND MODE ---
+    public class BackgroundModeSideScreen : SideScreenContent
+    {
+        public MultiToggle toggle;
+        public LocText label;
+        public ToolTip tooltip;
+        private BackgroundModeControl target;
+
+        protected override void OnSpawn()
+        {
+            base.OnSpawn();
+            if (toggle != null)
+            {
+                toggle.onClick = (System.Action)Delegate.Combine(toggle.onClick, new System.Action(this.OnClick));
+            }
+        }
+
+        public override bool IsValidForTarget(GameObject target)
+        {
+            return target.GetComponent<BackgroundModeControl>() != null;
+        }
+
+        public override void SetTarget(GameObject target)
+        {
+            base.SetTarget(target);
+            if (target == null) return;
+
+            this.target = target.GetComponent<BackgroundModeControl>();
+            if (this.target == null) return;
+
+            if (label != null) label.text = this.target.CheckboxLabel;
+            if (tooltip != null) tooltip.toolTip = this.target.CheckboxTooltip;
+
+            Refresh();
+        }
+
+        public override void ClearTarget()
+        {
+            base.ClearTarget();
+            this.target = null;
+        }
+
+        private void Refresh()
+        {
+            if (target != null && toggle != null)
+            {
+                toggle.ChangeState(target.GetCheckboxValue() ? 1 : 0);
+            }
+        }
+
+        private void OnClick()
+        {
+            if (target != null)
+            {
+                target.SetCheckboxValue(!target.GetCheckboxValue());
+                Refresh();
+            }
+        }
+    }
+
+    // --- 3. MODE & STATE MANAGER ---
+    public static class ModeManager
+    {
+        public static ModBuildingMode CurrentMode = ModBuildingMode.Override;
 
         public static readonly string[] LadderIds = new string[]
         {
@@ -44,9 +130,9 @@ namespace QualityOfLifeONI
             "InsulatedDoor"       // Insulated Door
         };
 
-        // Backup vanilla state to safely restore when toggled OFF
         private class SavedState
         {
+            public bool Entombable;
             public BuildLocationRule BuildLocationRule;
             public ObjectLayer ObjectLayer;
             public ObjectLayer TileLayer;
@@ -69,117 +155,116 @@ namespace QualityOfLifeONI
                 {
                     VanillaStates[id] = new SavedState
                     {
+                        Entombable = def.Entombable,
                         BuildLocationRule = def.BuildLocationRule,
                         ObjectLayer = def.ObjectLayer,
                         TileLayer = def.TileLayer,
                         ReplacementLayer = def.ReplacementLayer,
-                        ReplacementCandidateLayers = def.ReplacementCandidateLayers != null ? new List<ObjectLayer>(def.ReplacementCandidateLayers) : new List<ObjectLayer>(),
-                        ReplacementTags = def.ReplacementTags != null ? new List<Tag>(def.ReplacementTags) : new List<Tag>()
+                        ReplacementCandidateLayers = def.ReplacementCandidateLayers != null ? new List<ObjectLayer>(def.ReplacementCandidateLayers) : null,
+                        ReplacementTags = def.ReplacementTags != null ? new List<Tag>(def.ReplacementTags) : null
                     };
                 }
             }
         }
 
-        public static void ToggleOverrideMode(bool enable)
+        public static void SetMode(ModBuildingMode mode)
         {
-            IsOverrideEnabled = enable;
+            CurrentMode = mode;
+            RestoreVanillaStates();
 
-            if (enable)
+            switch (mode)
             {
-                ApplyModOverrides();
-            }
-            else
-            {
-                RestoreVanillaStates();
+                case ModBuildingMode.Override:
+                    ApplyOverrideMode();
+                    break;
+                case ModBuildingMode.Background:
+                    ApplyBackgroundMode();
+                    break;
+                case ModBuildingMode.Vanilla:
+                default:
+                    break;
             }
         }
 
-        public static void ApplyModOverrides()
+        // --- MODE 1: OVERRIDE MODE ---
+        private static void ApplyOverrideMode()
         {
-            // --- LADDER LOGIC ---
             foreach (string id in LadderIds)
             {
                 BuildingDef def = Assets.GetBuildingDef(id);
-                if (def != null)
-                {
-                    def.Entombable = false;
-                    def.BuildLocationRule = BuildLocationRule.NotInTiles;
-                    def.ReplacementLayer = ObjectLayer.ReplacementTile;
+                if (def == null) continue;
 
-                    if (def.ReplacementCandidateLayers == null) def.ReplacementCandidateLayers = new List<ObjectLayer>();
-                    if (def.ReplacementTags == null) def.ReplacementTags = new List<Tag>();
+                def.Entombable = false;
+                def.BuildLocationRule = BuildLocationRule.NotInTiles;
+                def.ReplacementLayer = ObjectLayer.ReplacementTile;
 
-                    if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.FoundationTile)) def.ReplacementCandidateLayers.Add(ObjectLayer.FoundationTile);
-                    if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.Building)) def.ReplacementCandidateLayers.Add(ObjectLayer.Building);
+                if (def.ReplacementCandidateLayers == null) def.ReplacementCandidateLayers = new List<ObjectLayer>();
+                if (def.ReplacementTags == null) def.ReplacementTags = new List<Tag>();
 
-                    if (!def.ReplacementTags.Contains(GameTags.FloorTiles)) def.ReplacementTags.Add(GameTags.FloorTiles);
-                    if (!def.ReplacementTags.Contains(GameTags.Ladders)) def.ReplacementTags.Add(GameTags.Ladders);
-                }
+                if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.FoundationTile)) def.ReplacementCandidateLayers.Add(ObjectLayer.FoundationTile);
+                if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.Building)) def.ReplacementCandidateLayers.Add(ObjectLayer.Building);
+
+                if (!def.ReplacementTags.Contains(GameTags.FloorTiles)) def.ReplacementTags.Add(GameTags.FloorTiles);
+                if (!def.ReplacementTags.Contains(GameTags.Ladders)) def.ReplacementTags.Add(GameTags.Ladders);
             }
 
-            // --- DOOR LOGIC ---
             foreach (string id in DoorIds)
             {
                 BuildingDef def = Assets.GetBuildingDef(id);
-                if (def != null)
-                {
-                    def.Entombable = false;
-                    def.BuildLocationRule = BuildLocationRule.NotInTiles;
-                    def.ObjectLayer = ObjectLayer.Backwall;
+                if (def == null) continue;
 
-                    if (def.TileLayer == ObjectLayer.FoundationTile)
-                    {
-                        def.TileLayer = ObjectLayer.Backwall;
-                    }
+                def.Entombable = false;
+                def.BuildLocationRule = BuildLocationRule.NotInTiles;
+                def.ObjectLayer = ObjectLayer.Backwall;
 
-                    def.ReplacementLayer = ObjectLayer.ReplacementBackwall;
+                if (def.TileLayer == ObjectLayer.FoundationTile)
+                    def.TileLayer = ObjectLayer.Backwall;
 
-                    if (def.ReplacementCandidateLayers == null) def.ReplacementCandidateLayers = new List<ObjectLayer>();
-                    if (def.ReplacementTags == null) def.ReplacementTags = new List<Tag>();
+                def.ReplacementLayer = ObjectLayer.ReplacementBackwall;
 
-                    if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.FoundationTile)) def.ReplacementCandidateLayers.Add(ObjectLayer.FoundationTile);
-                    if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.Backwall)) def.ReplacementCandidateLayers.Add(ObjectLayer.Backwall);
+                if (def.ReplacementCandidateLayers == null) def.ReplacementCandidateLayers = new List<ObjectLayer>();
+                if (def.ReplacementTags == null) def.ReplacementTags = new List<Tag>();
 
-                    if (!def.ReplacementTags.Contains(GameTags.FloorTiles)) def.ReplacementTags.Add(GameTags.FloorTiles);
-                    if (!def.ReplacementTags.Contains(GameTags.Backwall)) def.ReplacementTags.Add(GameTags.Backwall);
-                }
+                if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.FoundationTile)) def.ReplacementCandidateLayers.Add(ObjectLayer.FoundationTile);
+                if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.Backwall)) def.ReplacementCandidateLayers.Add(ObjectLayer.Backwall);
+
+                if (!def.ReplacementTags.Contains(GameTags.FloorTiles)) def.ReplacementTags.Add(GameTags.FloorTiles);
+                if (!def.ReplacementTags.Contains(GameTags.Backwall)) def.ReplacementTags.Add(GameTags.Backwall);
             }
+        }
 
-            // WIP
+        // --- MODE 2: BACKGROUND MODE ---
+        private static void ApplyBackgroundMode()
+        {
+            List<string> targetIds = new List<string>(LadderIds);
+            targetIds.AddRange(DoorIds);
 
-            //// --- HEAVY-WATT WIRE & JOINT PLATE LOGIC ---
-            //foreach (string id in heavyWattWireIds)
-            //{
-            //    BuildingDef def = Assets.GetBuildingDef(id);
-            //    if (def != null)
-            //    {
-            //        // BuildLocationRule.Tile enables ONI's tile-replacement pipeline:
-            //        // allows dragging over tiles and queues automatic tile deconstruction upon completion
-            //        def.BuildLocationRule = BuildLocationRule.Tile;
+            foreach (string id in targetIds)
+            {
+                BuildingDef def = Assets.GetBuildingDef(id);
+                if (def == null) continue;
 
-            //        // Assign the construction ghost to the tile replacement layer
-            //        def.ReplacementLayer = ObjectLayer.ReplacementTile;
+                def.Entombable = false;
+                def.BuildLocationRule = BuildLocationRule.NotInTiles;
+                def.ObjectLayer = ObjectLayer.Backwall;
 
-            //        if (def.ReplacementCandidateLayers == null)
-            //            def.ReplacementCandidateLayers = new List<ObjectLayer>();
+                if (def.TileLayer == ObjectLayer.FoundationTile)
+                {
+                    def.TileLayer = ObjectLayer.Backwall;
+                }
 
-            //        if (def.ReplacementTags == null)
-            //            def.ReplacementTags = new List<Tag>();
-
-            //        // Allow replacing solid tiles (FoundationTile) and other wires on the same layer
-            //        if (!def.ReplacementCandidateLayers.Contains(ObjectLayer.FoundationTile))
-            //            def.ReplacementCandidateLayers.Add(ObjectLayer.FoundationTile);
-
-            //        if (!def.ReplacementCandidateLayers.Contains(def.ObjectLayer))
-            //            def.ReplacementCandidateLayers.Add(def.ObjectLayer);
-
-            //        if (!def.ReplacementTags.Contains(GameTags.FloorTiles))
-            //            def.ReplacementTags.Add(GameTags.FloorTiles);
-
-            //        if (!def.ReplacementTags.Contains(GameTags.Wires))
-            //            def.ReplacementTags.Add(GameTags.Wires);
-            //    }
-            //}
+                def.ReplacementLayer = ObjectLayer.ReplacementBackwall;
+                def.ReplacementCandidateLayers = new List<ObjectLayer>
+                {
+                    ObjectLayer.FoundationTile,
+                    ObjectLayer.Backwall
+                };
+                def.ReplacementTags = new List<Tag>
+                {
+                    GameTags.FloorTiles,
+                    GameTags.Backwall
+                };
+            }
         }
 
         private static void RestoreVanillaStates()
@@ -187,35 +272,33 @@ namespace QualityOfLifeONI
             foreach (var kvp in VanillaStates)
             {
                 BuildingDef def = Assets.GetBuildingDef(kvp.Key);
-                if (def != null)
-                {
-                    SavedState saved = kvp.Value;
-                    def.BuildLocationRule = saved.BuildLocationRule;
-                    def.ObjectLayer = saved.ObjectLayer;
-                    def.TileLayer = saved.TileLayer;
-                    def.ReplacementLayer = saved.ReplacementLayer;
-                    def.ReplacementCandidateLayers = new List<ObjectLayer>(saved.ReplacementCandidateLayers);
-                    def.ReplacementTags = new List<Tag>(saved.ReplacementTags);
-                }
+                if (def == null) continue;
+
+                SavedState saved = kvp.Value;
+                def.Entombable = saved.Entombable;
+                def.BuildLocationRule = saved.BuildLocationRule;
+                def.ObjectLayer = saved.ObjectLayer;
+                def.TileLayer = saved.TileLayer;
+                def.ReplacementLayer = saved.ReplacementLayer;
+                def.ReplacementCandidateLayers = saved.ReplacementCandidateLayers != null ? new List<ObjectLayer>(saved.ReplacementCandidateLayers) : null;
+                def.ReplacementTags = saved.ReplacementTags != null ? new List<Tag>(saved.ReplacementTags) : null;
             }
         }
     }
 
-    // --- 3. HARMONY PATCH ---
+    // --- 4. HARMONY PATCHES ---
+
+    // Patch 1: Building setup
     [HarmonyPatch(typeof(GeneratedBuildings), nameof(GeneratedBuildings.LoadGeneratedBuildings))]
     public static class LaddersAndDoorsFixed_GeneratedBuildings_Patch
     {
         public static void Postfix()
         {
-            // 1. Save vanilla states first
-            OverrideManager.SaveVanillaStates();
+            ModeManager.SaveVanillaStates();
+            ModeManager.SetMode(ModBuildingMode.Override);
 
-            // 2. Apply custom mod rules
-            OverrideManager.ApplyModOverrides();
-
-            // 3. Attach the side-screen component to building prefabs
-            List<string> allTargetIds = new List<string>(OverrideManager.LadderIds);
-            allTargetIds.AddRange(OverrideManager.DoorIds);
+            List<string> allTargetIds = new List<string>(ModeManager.LadderIds);
+            allTargetIds.AddRange(ModeManager.DoorIds);
 
             foreach (string id in allTargetIds)
             {
@@ -223,7 +306,61 @@ namespace QualityOfLifeONI
                 if (def != null && def.BuildingComplete != null)
                 {
                     def.BuildingComplete.AddComponent<OverrideModeControl>();
+                    def.BuildingComplete.AddComponent<BackgroundModeControl>();
                 }
+            }
+        }
+    }
+
+    // Patch 2: Safe registration of custom side screen UI for BackgroundMode
+    [HarmonyPatch(typeof(DetailsScreen), "OnPrefabInit")]
+    public static class DetailsScreen_OnPrefabInit_Patch
+    {
+        public static void Postfix(DetailsScreen __instance)
+        {
+            // Traverse private field 'sideScreens' safely
+            var sideScreens = Traverse.Create(__instance).Field<List<DetailsScreen.SideScreenRef>>("sideScreens").Value;
+            if (sideScreens == null) return;
+
+            // Find standard checkbox side screen prefab using type name matching
+            DetailsScreen.SideScreenRef originalRef = null;
+            foreach (var ssRef in sideScreens)
+            {
+                if (ssRef.screenPrefab != null && ssRef.screenPrefab.GetType().Name == "CheckboxSideScreen")
+                {
+                    originalRef = ssRef;
+                    break;
+                }
+            }
+
+            if (originalRef != null && originalRef.screenPrefab != null)
+            {
+                // Clone the prefab gameobject
+                GameObject clonedGo = UnityEngine.Object.Instantiate(originalRef.screenPrefab.gameObject, originalRef.screenPrefab.transform.parent);
+                clonedGo.name = "BackgroundModeSideScreen";
+
+                // Destroy original CheckboxSideScreen script on the clone
+                var oldComponent = clonedGo.GetComponent(originalRef.screenPrefab.GetType());
+                if (oldComponent != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(oldComponent);
+                }
+
+                // Attach custom screen component
+                BackgroundModeSideScreen customScreen = clonedGo.AddComponent<BackgroundModeSideScreen>();
+                customScreen.toggle = clonedGo.GetComponentInChildren<MultiToggle>();
+                customScreen.label = clonedGo.GetComponentInChildren<LocText>();
+                customScreen.tooltip = clonedGo.GetComponentInChildren<ToolTip>();
+
+                // Insert into sideScreens list
+                sideScreens.Add(new DetailsScreen.SideScreenRef
+                {
+                    name = "BackgroundModeSideScreen",
+                    screenPrefab = customScreen,
+                    offset = originalRef.offset,
+                    tab = originalRef.tab,
+                    screenInstance = null
+                });
             }
         }
     }
