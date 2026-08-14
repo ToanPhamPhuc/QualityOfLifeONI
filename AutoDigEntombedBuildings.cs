@@ -6,7 +6,7 @@ namespace QualityOfLifeONI
     public static class AutoDigHelper
     {
         /// <summary>
-        /// Places a Dig errand on the specified cell if it is solid and diggable.
+        /// Places a native Dig errand on a specified cell if it is solid and diggable.
         /// </summary>
         public static void TryPlaceDig(int cell)
         {
@@ -15,10 +15,10 @@ namespace QualityOfLifeONI
             // 1. Cell must be solid and diggable (hardness < 255 excludes Neutronium)
             if (Grid.Solid[cell] && Grid.Element[cell].hardness < 255)
             {
-                // 2. Check if a dig errand already exists on this cell
+                // 2. Ensure no dig errand already exists on this cell
                 if (Grid.Objects[cell, (int)ObjectLayer.DigPlacer] == null)
                 {
-                    // 3. Temporarily bypass foundation state so DigTool can place on building cells
+                    // 3. Temporarily bypass DigTool's foundation check so errands can be placed over building cells
                     bool wasFoundation = Grid.Foundation[cell];
                     Grid.Foundation[cell] = false;
 
@@ -28,7 +28,7 @@ namespace QualityOfLifeONI
                     // 5. Restore original foundation state
                     Grid.Foundation[cell] = wasFoundation;
 
-                    // 6. Set master priority (High Priority - Level 5)
+                    // 6. Set priority (High Priority - Level 5)
                     if (digGO != null)
                     {
                         Prioritizable prioritizable = digGO.GetComponent<Prioritizable>();
@@ -42,7 +42,7 @@ namespace QualityOfLifeONI
         }
 
         /// <summary>
-        /// Checks if a cell contains a building on valid ObjectLayers.
+        /// Checks if a cell contains a building on standard layers.
         /// </summary>
         public static bool HasBuilding(int cell)
         {
@@ -53,7 +53,31 @@ namespace QualityOfLifeONI
         }
     }
 
-    // --- PATCH 1: Triggers when falling Sand / Snow / Regolith lands and solidifies ---
+    // --- PATCH 1: Standard Buildings (Subscribes to ONI's EntombedChanged event on spawn) ---
+    [HarmonyPatch(typeof(Building), "OnSpawn")]
+    public static class Building_OnSpawn_Patch
+    {
+        public static void Postfix(Building __instance)
+        {
+            if (__instance == null) return;
+
+            // Subscribe to ONI's actual entombment event
+            __instance.Subscribe((int)GameHashes.EntombedChanged, (data) =>
+            {
+                if (__instance == null) return;
+
+                int[] placementCells = __instance.PlacementCells;
+                if (placementCells == null) return;
+
+                foreach (int cell in placementCells)
+                {
+                    AutoDigHelper.TryPlaceDig(cell);
+                }
+            });
+        }
+    }
+
+    // --- PATCH 2: Falling Sand / Snow / Regolith Landing ---
     [HarmonyPatch(typeof(UnstableGroundManager), "RemoveFromPending")]
     public static class UnstableGroundManager_RemoveFromPending_Patch
     {
@@ -66,9 +90,9 @@ namespace QualityOfLifeONI
         }
     }
 
-    // --- PATCH 2: Triggers when Meteors, Ice, or Spawns entomb a building/entity ---
-    [HarmonyPatch(typeof(EntombVulnerable), "CheckEntombed")]
-    public static class EntombVulnerable_CheckEntombed_Patch
+    // --- PATCH 3: Plants & Sensors (EntombVulnerable) ---
+    [HarmonyPatch(typeof(EntombVulnerable), "OnSolidChanged")]
+    public static class EntombVulnerable_OnSolidChanged_Patch
     {
         public static void Postfix(EntombVulnerable __instance)
         {
