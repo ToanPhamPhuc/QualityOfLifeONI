@@ -16,42 +16,47 @@ namespace QualityOfLifeONI
 
             PUtil.InitLibrary();
 
-            // Register only the ONE master config class
+            // Register master config class with PLib
             new POptions().RegisterOptions(this, typeof(QoLConfig));
 
-            // Load it into memory at startup
-            Config = POptions.ReadSettings<QoLConfig>();
-            if (Config == null)
-            {
-                Config = new QoLConfig();
-            }
+            // Load settings into memory at startup
+            Config = POptions.ReadSettings<QoLConfig>() ?? new QoLConfig();
         }
     }
 
-    // 1. Add Strings and register it to the Build Menu
+    // --- CENTRAL STRINGS AND BUILDINGS REGISTRY ---
     [HarmonyPatch(typeof(GeneratedBuildings), "LoadGeneratedBuildings")]
-    public class SelfTimerDoor_Registration_Patch
+    public static class QoL_GeneratedBuildings_Patch
     {
         public static void Prefix()
         {
-            // Add names and descriptions
+            // 1. Custom Buildings Strings
             Strings.Add("STRINGS.BUILDINGS.PREFABS.SELFTIMERPNEUMATICDOOR.NAME", "(Beta) Self-Timer Pneumatic Door");
             Strings.Add("STRINGS.BUILDINGS.PREFABS.SELFTIMERPNEUMATICDOOR.DESC", "An internal door with an integrated cycle timer.");
             Strings.Add("STRINGS.BUILDINGS.PREFABS.SELFTIMERPNEUMATICDOOR.EFFECT", "Automatically opens and locks according to the time of day, completely bypassing the need for automation wire.");
 
-            // Add to the "Base" build menu category
+            // 2. UI Tool Filters Strings (Ladders & Doors Tool)
+            Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.OVERRIDE_MODE", "Override Mode");
+            Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.OVERRIDE_MODE.TOOLTIP", "Allows ladders and doors to replace solid tiles.");
+
+            Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.BACKGROUND_MODE", "Background Mode");
+            Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.BACKGROUND_MODE.TOOLTIP", "Places ladders and doors on the background layer.");
+
+            Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.VANILLA_MODE", "Vanilla Mode");
+            Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS.VANILLA_MODE.TOOLTIP", "Restores default vanilla building rules.");
+
+            // 3. Register Buildings to Plan Menu
             ModUtil.AddBuildingToPlanScreen("Base", SelfTimerPneumaticDoorConfig.ID);
         }
     }
 
-    // 2. Add it to the Tech Tree so Dupes can research it
+    // --- TECH TREE UNLOCKS ---
     [HarmonyPatch(typeof(Db), "Initialize")]
-    public class SelfTimerDoor_TechTree_Patch
+    public static class QoL_TechTree_Patch
     {
         public static void Postfix()
         {
-            // Unlocks alongside the standard Pneumatic Door
-            Db.Get().Techs.Get("AnimalControl").unlockedItemIDs.Add(SelfTimerPneumaticDoorConfig.ID);
+            Db.Get().Techs.Get("AnimalControl")?.unlockedItemIDs.Add(SelfTimerPneumaticDoorConfig.ID);
         }
     }
 }

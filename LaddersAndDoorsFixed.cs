@@ -5,16 +5,6 @@ using UnityEngine;
 
 namespace QualityOfLifeONI
 {
-    // --- 0. MOD ENTRY POINT ---
-    //public class ModInit : KMod.UserMod2
-    //{
-    //    public override void OnLoad(Harmony harmony)
-    //    {
-    //        base.OnLoad(harmony);
-    //        harmony.PatchAll(); // Ensures all Harmony patches below are registered!
-    //    }
-    //}
-
     public enum ModBuildingMode
     {
         Vanilla,
@@ -209,7 +199,6 @@ namespace QualityOfLifeONI
         {
             base.OnActivateTool();
 
-            // Hide priority numbers overlay when selecting mode
             if (ToolMenu.Instance != null && ToolMenu.Instance.PriorityScreen != null)
             {
                 ToolMenu.Instance.PriorityScreen.Show(false);
@@ -236,17 +225,17 @@ namespace QualityOfLifeONI
             currentFilters = new ToolParameterMenu.ToggleData[]
             {
                 new ToolParameterMenu.ToggleData(
-                    "Override Mode",
+                    "OVERRIDE_MODE",
                     ModeManager.CurrentMode == ModBuildingMode.Override ? ToolParameterMenu.ToggleState.On : ToolParameterMenu.ToggleState.Off,
                     false
                 ),
                 new ToolParameterMenu.ToggleData(
-                    "Background Mode",
+                    "BACKGROUND_MODE",
                     ModeManager.CurrentMode == ModBuildingMode.Background ? ToolParameterMenu.ToggleState.On : ToolParameterMenu.ToggleState.Off,
                     false
                 ),
                 new ToolParameterMenu.ToggleData(
-                    "Vanilla Mode",
+                    "VANILLA_MODE",
                     ModeManager.CurrentMode == ModBuildingMode.Vanilla ? ToolParameterMenu.ToggleState.On : ToolParameterMenu.ToggleState.Off,
                     false
                 )
@@ -261,17 +250,17 @@ namespace QualityOfLifeONI
             {
                 if (filter.state == ToolParameterMenu.ToggleState.On)
                 {
-                    if (filter.name == "Override Mode" && ModeManager.CurrentMode != ModBuildingMode.Override)
+                    if (filter.name == "OVERRIDE_MODE" && ModeManager.CurrentMode != ModBuildingMode.Override)
                     {
                         ModeManager.SetMode(ModBuildingMode.Override);
                         break;
                     }
-                    else if (filter.name == "Background Mode" && ModeManager.CurrentMode != ModBuildingMode.Background)
+                    else if (filter.name == "BACKGROUND_MODE" && ModeManager.CurrentMode != ModBuildingMode.Background)
                     {
                         ModeManager.SetMode(ModBuildingMode.Background);
                         break;
                     }
-                    else if (filter.name == "Vanilla Mode" && ModeManager.CurrentMode != ModBuildingMode.Vanilla)
+                    else if (filter.name == "VANILLA_MODE" && ModeManager.CurrentMode != ModBuildingMode.Vanilla)
                     {
                         ModeManager.SetMode(ModBuildingMode.Vanilla);
                         break;
@@ -279,7 +268,6 @@ namespace QualityOfLifeONI
                 }
             }
 
-            // Refresh menu options visually
             BuildFilters();
             ToolMenu.Instance.toolParameterMenu.PopulateMenu(this.currentFilters);
         }
@@ -297,7 +285,7 @@ namespace QualityOfLifeONI
                 b == Action.NumActions || b == Action.Invalid)
             {
                 __result = false;
-                return false; // Skip original method execution to avoid assertion crash
+                return false;
             }
 
             return true;
@@ -326,7 +314,6 @@ namespace QualityOfLifeONI
 
             LaddersDoorsModeTool customTool = toolGo.AddComponent<LaddersDoorsModeTool>();
 
-            // Safely resize the InterfaceTool[] array directly
             var arr = __instance.tools;
             if (arr == null)
             {
@@ -353,7 +340,7 @@ namespace QualityOfLifeONI
                 __instance.basicTools.Add(ToolMenu.CreateToolCollection(
                     "Ladders & Doors Mode",
                     "action_repair",
-                    Action.Invalid, // FIXED: Use Action.Invalid instead of Action.NumActions
+                    Action.Invalid,
                     "LaddersDoorsModeTool",
                     "Switches mode for Ladders and Doors",
                     false
